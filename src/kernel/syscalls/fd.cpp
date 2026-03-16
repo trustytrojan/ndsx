@@ -1,25 +1,11 @@
-#include "process_manager.hpp"
-
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <stdio-posix.h>
-#include <sys/unistd.h>
+#include "../process_manager.hpp"
 
 #include <cerrno>
 
+// File descriptor system calls.
+
 extern "C"
 {
-pid_t getpid()
-{
-	return get_current_process().pid;
-}
-
-// since this isn't defined in libnds, we can define it directly, and don't need to put it in `syscall_overrides`.
-pid_t getppid()
-{
-	return get_current_process().ppid;
-}
-
 int open(const char *path, int flags, ...)
 {
 	auto &p = get_current_process();
@@ -103,17 +89,17 @@ ssize_t read(int fd, void *ptr, size_t len)
 	{
 		// we can simply handle this here instead of requiring it from libnds
 		char *cp = (char *)ptr;
-        const char *const end = (char *)ptr + len;
-        for (; cp <= end; ++cp)
-        {
+		const char *const end = (char *)ptr + len;
+		for (; cp <= end; ++cp)
+		{
 			int libnds_stdin_getc_keyboard(FILE *);
-            const char c = libnds_stdin_getc_keyboard(NULL);
-            if (c <= 0)
-                // keyboard uninitialized, or other problem
-                break;
-            *cp = c;
-        }
-        return cp - (char *)ptr;
+			const char c = libnds_stdin_getc_keyboard(NULL);
+			if (c <= 0)
+				// keyboard uninitialized, or other problem
+				break;
+			*cp = c;
+		}
+		return cp - (char *)ptr;
 	}
 
 	typeof(read) libnds_read;
@@ -137,15 +123,13 @@ ssize_t write(int fd, const void *ptr, size_t len)
 		return -1;
 	}
 
-    if (kernel_fd == STDOUT_FILENO || kernel_fd == STDERR_FILENO)
-    {
+	if (kernel_fd == STDOUT_FILENO || kernel_fd == STDERR_FILENO)
+	{
 		// we can simply handle this here instead of requiring it from libnds
 		extern ConsoleOutFn libnds_stdout_write, libnds_stderr_write;
-        const ConsoleOutFn fn = (kernel_fd == STDOUT_FILENO)
-            ? libnds_stdout_write
-            : libnds_stderr_write;
-        return fn((char *)ptr, len);
-    }
+		const ConsoleOutFn fn = (kernel_fd == STDOUT_FILENO) ? libnds_stdout_write : libnds_stderr_write;
+		return fn((char *)ptr, len);
+	}
 
 	typeof(write) libnds_write;
 	return libnds_write(kernel_fd, ptr, len);

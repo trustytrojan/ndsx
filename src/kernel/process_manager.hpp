@@ -21,7 +21,21 @@ struct Process
 	int status;
 	bool has_wait_status;
 
-	constexpr Process() : dlhandle(nullptr), pid(0), ppid(-1), fdtable{-1, -1, -1, -1, -1, -1, -1, -1}, threads{0, 0, 0, 0, 0, 0, 0, 0}, argc(0), argv(nullptr), envp(nullptr), entrypoint(nullptr), exit_code(0), status(0), has_wait_status(false) {}
+	constexpr Process()
+		: dlhandle(nullptr),
+		  pid(0),
+		  ppid(-1),
+		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
+		  threads{0, 0, 0, 0, 0, 0, 0, 0},
+		  argc(0),
+		  argv(nullptr),
+		  envp(nullptr),
+		  entrypoint(nullptr),
+		  exit_code(0),
+		  status(0),
+		  has_wait_status(false)
+	{
+	}
 	constexpr ~Process();
 	constexpr bool all_threads_joined();
 };

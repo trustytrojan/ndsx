@@ -23,7 +23,8 @@ set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--e
 add_executable(ndsx
 	src/kernel/main.cpp
 	src/kernel/process_manager.cpp
-	src/kernel/syscalls.cpp
+	src/kernel/syscalls/fd.cpp
+	src/kernel/syscalls/process.cpp
 	src/kernel/std_streams.c
 )
 target_link_libraries(ndsx PRIVATE nds9-prefixed)

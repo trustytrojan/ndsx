@@ -224,8 +224,3 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		cothread_yield();
 	}
 }
-
-extern "C" pid_t wait(int *stat_loc)
-{
-	return waitpid(-1, stat_loc, 0);
-}
