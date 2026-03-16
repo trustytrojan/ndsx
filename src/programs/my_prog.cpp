@@ -12,7 +12,6 @@ int main(int argc, char **argv)
 	for (int i = 0; i < argc; ++i)
 		printf("  %d: '%s'\n", i, argv[i]);
 
-	/*
 	{ // write()
 		constexpr char buf[] = "my_prog: write() test string\n";
 		constexpr auto bytes_to_write = sizeof(buf);
@@ -70,7 +69,6 @@ int main(int argc, char **argv)
 		buf[bytes_read] = '\0';
 		printf("my_prog: read %d bytes from stdin: '%s'\n", bytes_read, buf);
 	}
-	*/
 
 	{ // STDOUT_FILENO reuse test
 		if (close(STDOUT_FILENO) == -1)
@@ -88,7 +86,7 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 		}*/
 
-		{
+		{ // write(1) -> FAIL
 			constexpr char buf[] = "*** this should not print! ***";
 			if (write(STDOUT_FILENO, buf, sizeof(buf)) != -1)
 			{
@@ -116,7 +114,9 @@ int main(int argc, char **argv)
 			fputs("my_prog: fflush(stdout)\n", stderr);
 		}
 
-		{ // fputs(no newline) -> SUCCESS. fflush() -> FAIL: write() fails.
+		// This test only works when stdout is buffered and has bufsize > sizeof(without_newline).
+		// Ensure this in std_streams.c before uncommenting.
+		/*{ // fputs(no newline) -> SUCCESS. fflush() -> FAIL: write() fails.
 			constexpr char without_newline[] = "*** this should not print! ***";
 
 			if (fputs(without_newline, stdout) == EOF)
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 				return EXIT_FAILURE;
 			}
 			fputs("my_prog: fflush(stdout) failed as expected\n", stderr);
-		}
+		}*/
 
 		const auto fd = open("out-test.txt", O_WRONLY | O_CREAT | O_TRUNC);
 		if (fd == -1)
