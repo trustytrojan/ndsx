@@ -11,15 +11,6 @@
 
 #include "process_manager.hpp"
 
-bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
-{
-	if (!(attributes & DSL_SYMBOL_UNRESOLVED))
-		return true;
-
-	printf("sym_resolver: failed to resolve '%s'\n", name);
-	return false;
-}
-
 int start_init()
 {
 	pid_t pid;
@@ -73,13 +64,18 @@ void init_console()
 	keyboardShow();
 }
 
+extern "C" void kernel_enable_stdout_buffer();
+
 int main()
 {
 	defaultExceptionHandler();
 	init_console();
 
-	dsl_set_symbol_resolver(my_sym_resolver);
-	set_kernel_process(); // initializes process 0 with main() thread
+	// we don't need to worry about the setvbuf() calls in consoleInitEx().
+	// it references `libnds_stdout` which is a different `FILE *` than our `stdout`!
+
+	// initializes process 0 with main() thread
+	set_kernel_process();
 
 	printf("ndsx 0.0.1\n\n");
 

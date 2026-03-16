@@ -12,6 +12,7 @@ int main(int argc, char **argv)
 	for (int i = 0; i < argc; ++i)
 		printf("  %d: '%s'\n", i, argv[i]);
 
+	/*
 	{ // write()
 		constexpr char buf[] = "my_prog: write() test string\n";
 		constexpr auto bytes_to_write = sizeof(buf);
@@ -69,6 +70,7 @@ int main(int argc, char **argv)
 		buf[bytes_read] = '\0';
 		printf("my_prog: read %d bytes from stdin: '%s'\n", bytes_read, buf);
 	}
+	*/
 
 	{ // STDOUT_FILENO reuse test
 		if (close(STDOUT_FILENO) == -1)
@@ -77,6 +79,8 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 		}
 
+		fputs("my_prog: close(1)\n", stderr);
+
 		/* picolibc's fclose() does NOT close() FDs of statically allocated FILEs! */
 		/*if (fclose(stdout) == EOF)
 		{
@@ -84,34 +88,51 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 		}*/
 
-		constexpr char buf1[] = "\e[31m";
-		if (write(STDOUT_FILENO, buf1, sizeof(buf1)) != -1)
 		{
-			fputs("my_prog: expected write() to fail\n", stderr);
-			return EXIT_FAILURE;
+			constexpr char buf[] = "*** this should not print! ***";
+			if (write(STDOUT_FILENO, buf, sizeof(buf)) != -1)
+			{
+				fputs("my_prog: expected write() to fail\n", stderr);
+				return EXIT_FAILURE;
+			}
+			fputs("my_prog: write(1) failed as expected\n", stderr);
 		}
 
-		{ // fputs() + fflush()
-			if (fputs(buf1, stdout) != EOF)
+		{ // fputs(newline) -> FAIL: write() fails. fflush() -> SUCCESS: buffer is empty.
+			constexpr char with_newline[] = "*** this should not print! ***\n";
+
+			if (fputs(with_newline, stdout) != EOF)
 			{
 				fputs("my_prog: expected fputs() to fail\n", stderr);
 				return EXIT_FAILURE;
 			}
+			fputs("my_prog: fputs(stdout) failed as expected\n", stderr);
+
+			if (fflush(stdout) == EOF)
+			{
+				perror("my_prog: fflush");
+				return EXIT_FAILURE;
+			}
+			fputs("my_prog: fflush(stdout)\n", stderr);
+		}
+
+		{ // fputs(no newline) -> SUCCESS. fflush() -> FAIL: write() fails.
+			constexpr char without_newline[] = "*** this should not print! ***";
+
+			if (fputs(without_newline, stdout) == EOF)
+			{
+				perror("my_prog: fputs");
+				return EXIT_FAILURE;
+			}
+			fputs("my_prog: fputs(stdout)\n", stderr);
 
 			if (fflush(stdout) != EOF)
 			{
 				fputs("my_prog: expected fflush() to fail\n", stderr);
 				return EXIT_FAILURE;
 			}
+			fputs("my_prog: fflush(stdout) failed as expected\n", stderr);
 		}
-
-		// or you can add a newline to buf1 and remove the fflush().
-		// same thing should happen, since stdout is line-buffered.
-
-		// yes, nothing will be red for the duration of this program.
-		// but once we return back to `init`, IT will have red output!
-		// TODO: find a way to separate the buffers of programs... aka waste memory
-		fputs("this text should NOT be red!\n", stderr);
 
 		const auto fd = open("out-test.txt", O_WRONLY | O_CREAT);
 		if (fd == -1)

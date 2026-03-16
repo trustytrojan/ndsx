@@ -24,6 +24,7 @@ add_executable(ndsx
 	src/kernel/main.cpp
 	src/kernel/process_manager.cpp
 	src/kernel/syscalls.cpp
+	src/kernel/std_streams.c
 )
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
 target_link_options(ndsx PRIVATE
