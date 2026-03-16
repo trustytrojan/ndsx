@@ -99,6 +99,23 @@ ssize_t read(int fd, void *ptr, size_t len)
 		return -1;
 	}
 
+	if (kernel_fd == STDIN_FILENO)
+	{
+		// we can simply handle this here instead of requiring it from libnds
+		char *cp = (char *)ptr;
+        const char *const end = (char *)ptr + len;
+        for (; cp <= end; ++cp)
+        {
+			int libnds_stdin_getc_keyboard(FILE *);
+            const char c = libnds_stdin_getc_keyboard(NULL);
+            if (c <= 0)
+                // keyboard uninitialized, or other problem
+                break;
+            *cp = c;
+        }
+        return cp - (char *)ptr;
+	}
+
 	typeof(read) libnds_read;
 	return libnds_read(kernel_fd, ptr, len);
 }
@@ -119,6 +136,16 @@ ssize_t write(int fd, const void *ptr, size_t len)
 		errno = EBADF;
 		return -1;
 	}
+
+    if (kernel_fd == STDOUT_FILENO || kernel_fd == STDERR_FILENO)
+    {
+		// we can simply handle this here instead of requiring it from libnds
+		extern ConsoleOutFn libnds_stdout_write, libnds_stderr_write;
+        const ConsoleOutFn fn = (kernel_fd == STDOUT_FILENO)
+            ? libnds_stdout_write
+            : libnds_stderr_write;
+        return fn((char *)ptr, len);
+    }
 
 	typeof(write) libnds_write;
 	return libnds_write(kernel_fd, ptr, len);
