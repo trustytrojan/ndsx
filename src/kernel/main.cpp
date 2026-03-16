@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include <cstdio>
-#include <list>
 
 #include "process_manager.hpp"
 
@@ -29,11 +28,6 @@ int start_init()
 		puts("failed to spawn init! crashing");
 		return -67;
 	}
-
-	extern std::list<Process> processes;
-
-	for (auto &p : processes)
-		printf("p=%p pid=%d threads[0]=%d\n", &p, p.pid, p.threads[0]);
 
 	int status;
 	const auto rc = waitpid(pid, &status, 0);

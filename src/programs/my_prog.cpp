@@ -13,7 +13,7 @@ int main(int argc, char **argv)
 
 	{ // write()
 		constexpr char buf[] = "my_prog: write() test string\n";
-		if (write(1, buf, sizeof(buf)) == -1)
+		if (write(STDOUT_FILENO, buf, sizeof(buf)) == -1)
 		{
 			perror("my_prog: write");
 			return EXIT_FAILURE;

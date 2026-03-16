@@ -9,7 +9,7 @@
 constexpr Process::~Process()
 {
 	if (dlhandle && dlclose(dlhandle) < 0)
-		printf("dlclose: %s\n", dlerror());
+		printf("kernel: dlclose: %s\n", dlerror());
 	for (const auto fd : fdtable)
 	{
 		// We don't want to close libnds's standard streams! Close everything else, though.
@@ -50,7 +50,7 @@ Process &get_current_process()
 			if (t == self)
 				return p;
 	}
-	puts("get_current_process: current process not found! crashing");
+	puts("kernel: get_current_process: current process not found! crashing");
 	libndsCrash("current process not found");
 }
 
@@ -67,11 +67,7 @@ Process *get_process(pid_t pid)
 
 static int process_start_trampoline(Process *arg)
 {
-	printf("process_start_trampoline: arg: %p\n", arg);
 	const auto p = (Process *)arg;
-	int argc = p->argc;
-	printf("process_start_trampoline: argc: %d\n", argc);
-	printf("process_start_trampoline: entrypoint: %p\n", p->entrypoint);
 	p->exit_code = p->entrypoint(p->argc, p->argv, p->envp);
 
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
@@ -96,7 +92,7 @@ extern "C" int posix_spawn(
 	const auto handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
 	if (!handle)
 	{
-		printf("dlopen: %s\n", dlerror());
+		printf("kernel: dlopen: %s\n", dlerror());
 		return -1;
 	}
 
@@ -164,7 +160,6 @@ static bool waitpid_pid_matches(const Process &p, pid_t parent_pid, pid_t pid)
 extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 {
 	const auto parent_pid = getpid();
-	printf("waitpid: parent_pid: %d\n", parent_pid);
 
 	int supported_options = WNOHANG;
 #ifdef WUNTRACED
@@ -199,7 +194,6 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 			auto &p = *it;
 			if (!waitpid_pid_matches(p, parent_pid, pid))
 				continue;
-			printf("waitpid: p.pid=%d parent_pid=%d pid=%d\n  matched!\n", p.pid, parent_pid, pid);
 
 			has_matching_child = true;
 
@@ -227,9 +221,7 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		if (nohang)
 			return 0;
 
-		printf("waitpid: parent_pid=%d before yield\n", parent_pid);
 		cothread_yield();
-		printf("waitpid: parent_pid=%d after yield\n", parent_pid);
 	}
 }
 
