@@ -1,0 +1,10 @@
+build
+*.elf
+*.nds
+examples
+node_modules
+package-lock.json
+.cache
+sdcard
+dynamic_libs
+.cmake_deps

@@ -1,0 +1,15 @@
+{
+	"version": 3,
+	"configurePresets": [
+		{
+			"name": "blocks",
+			"displayName": "BlocksDS",
+			"binaryDir": "${sourceDir}/build",
+			"toolchainFile": "$env{BLOCKSDS}/cmake/BlocksDS.cmake",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"NDS_TOOLCHAIN_VENDOR": "blocks"
+			}
+		}
+	]
+}
