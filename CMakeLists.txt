@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 execute_process(
 	COMMAND
 		"$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy"
-		"--redefine-syms=${CMAKE_SOURCE_DIR}/symbol_renames.txt"
+		"--redefine-syms=${CMAKE_SOURCE_DIR}/libnds_sym_renames.txt"
 		"$ENV{BLOCKSDS}/libs/libnds/lib/libnds9.a"
 		"${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
 	COMMAND_ERROR_IS_FATAL ANY
@@ -27,8 +27,8 @@ add_executable(ndsx
 )
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
 target_link_options(ndsx PRIVATE
-	-Wl,--undefined=ferror
-	-Wl,--undefined=getline
+	-Wl,--undefined=fwrite
+	-Wl,--undefined=fputs
 	-Wl,--undefined=getppid
 	-Wl,--undefined=wait
 	-Wl,--undefined=gettimeofday
@@ -41,7 +41,6 @@ add_library(init_process STATIC
 blocksds_create_dsl(
 	init_process
 	MAIN_TARGET ndsx
-	IGNORE_UNRESOLVED_SYMBOLS
 )
 
 add_library(my_prog STATIC
@@ -50,7 +49,6 @@ add_library(my_prog STATIC
 blocksds_create_dsl(
 	my_prog
 	MAIN_TARGET ndsx
-	IGNORE_UNRESOLVED_SYMBOLS
 )
 
 foreach(_dsl IN ITEMS init_process my_prog)

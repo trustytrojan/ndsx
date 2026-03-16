@@ -52,16 +52,36 @@ int start_init()
 	return WEXITSTATUS(status);
 }
 
+void init_console()
+{
+	// Video initialization - We want to use both screens
+	videoSetMode(MODE_0_2D);
+	videoSetModeSub(MODE_0_2D);
+	vramSetBankA(VRAM_A_MAIN_BG);
+	vramSetBankC(VRAM_C_SUB_BG);
+
+	constexpr auto layer{0};
+	constexpr auto type{BgType_Text4bpp};
+	constexpr auto size{BgSize_T_256x256};
+	constexpr auto mapBase{20}; // 22 is recommended, but as found below, 20 is fine
+	constexpr auto tileBase{3};
+
+	static PrintConsole console;
+	consoleInit(&console, layer, type, size, mapBase, tileBase, true, true);
+
+	keyboardDemoInit()->scrollSpeed = 0;
+	keyboardShow();
+}
+
 int main()
 {
 	defaultExceptionHandler();
-	consoleDemoInit();
+	init_console();
 
-	printf("ndsx 0.0.1\n\n");
-
-	keyboardDemoInit()->scrollSpeed = 0;
 	dsl_set_symbol_resolver(my_sym_resolver);
 	set_kernel_process(); // initializes process 0 with main() thread
+
+	printf("ndsx 0.0.1\n\n");
 
 	if (!fatInitDefault())
 	{

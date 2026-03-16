@@ -1,0 +1,12 @@
+# process management
+getpid libnds_getpid
+# file descriptors
+open libnds_open
+close libnds_close
+read libnds_read
+write libnds_write
+lseek libnds_lseek
+# these renames force the linker to pull in picolibc's stdio streams instead, giving us nice buffered I/O
+stdin libnds_stdin
+stdout libnds_stdout
+stderr libnds_stderr

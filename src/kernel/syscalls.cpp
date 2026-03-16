@@ -2,9 +2,10 @@
 
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <stdio-posix.h>
+#include <sys/unistd.h>
 
 #include <cerrno>
-#include <sys/unistd.h>
 
 extern "C"
 {
@@ -104,23 +105,36 @@ ssize_t read(int fd, void *ptr, size_t len)
 
 ssize_t write(int fd, const void *ptr, size_t len)
 {
+	const auto &p = get_current_process();
+
+	extern ConsoleOutFn libnds_stderr_write;
+	static char buf[100] = {};
+
+
 	if (fd < 0 || fd >= Process::MAX_FDS)
 	{
 		errno = EBADF;
 		return -1;
 	}
 
-	const auto &p = get_current_process();
-
 	const auto kernel_fd = p.fdtable[fd];
 	if (kernel_fd < 0)
 	{
 		errno = EBADF;
+		int _len = snprintf(buf, sizeof(buf) - 1, "kernel: write: %s\n", strerror(errno));
+		libnds_stderr_write(buf, _len);
 		return -1;
 	}
 
 	typeof(write) libnds_write;
-	return libnds_write(kernel_fd, ptr, len);
+	const auto rc = libnds_write(kernel_fd, ptr, len);
+	if (rc == -1)
+	{
+		int _len = snprintf(buf, sizeof(buf) - 1, "kernel: write: %s\n", strerror(errno));
+		libnds_stderr_write(buf, _len);
+	}
+	return rc;
+	// return libnds_write(kernel_fd, ptr, len);
 }
 
 off_t lseek(int fd, off_t offset, int whence)

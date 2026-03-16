@@ -1,6 +1,0 @@
-getpid libnds_getpid
-open libnds_open
-close libnds_close
-read libnds_read
-write libnds_write
-lseek libnds_lseek
