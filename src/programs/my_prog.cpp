@@ -134,7 +134,7 @@ int main(int argc, char **argv)
 			fputs("my_prog: fflush(stdout) failed as expected\n", stderr);
 		}
 
-		const auto fd = open("out-test.txt", O_WRONLY | O_CREAT);
+		const auto fd = open("out-test.txt", O_WRONLY | O_CREAT | O_TRUNC);
 		if (fd == -1)
 		{
 			perror("my_prog: open");
@@ -149,14 +149,15 @@ int main(int argc, char **argv)
 		}
 
 		constexpr char buf[] = "my_prog: write() test string\n";
-		const auto bytes_written = write(fd, buf, sizeof(buf));
+		constexpr auto bytes_to_write = sizeof(buf) - 1;
+		const auto bytes_written = write(fd, buf, bytes_to_write);
 		if (bytes_written == -1)
 		{
 			perror("my_prog: write");
 			return EXIT_FAILURE;
 		}
 
-		fprintf(stderr, "my_prog: wrote %d/%d bytes to stdout\n", bytes_written, sizeof(buf));
+		fprintf(stderr, "my_prog: wrote %d/%d bytes to stdout\n", bytes_written, bytes_to_write);
 		fputs("my_prog: go view the file!\n", stderr);
 
 		if (close(fd) == -1)
