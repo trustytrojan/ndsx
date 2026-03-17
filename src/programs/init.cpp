@@ -1,71 +1,65 @@
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 #include <spawn.h>
+#include <string_view>
 #include <sys/unistd.h>
 #include <sys/wait.h>
 #include <vector>
+
+int execute_process(std::string_view file, std::span<const char *> argv, std::span<const char *> envp)
+{
+	pid_t pid;
+	if (posix_spawn(&pid, file.data(), {}, {}, (char **)argv.data(), (char **)envp.data()) == -1)
+	{
+		perror("init: posix_spawn");
+		return EXIT_FAILURE;
+	}
+	printf("init: child %d spawned\n", pid);
+
+	int status;
+	const auto rpid = waitpid(pid, &status, 0);
+	if (rpid == -1)
+	{
+		perror("init: waitpid");
+		return EXIT_FAILURE;
+	}
+
+	if (rpid != pid)
+	{
+		fputs("init: waitpid() did not return child pid\n", stderr);
+		return EXIT_FAILURE;
+	}
+
+	if (!WIFEXITED(status))
+	{
+		fputs("init: child did not exit normally\n", stderr);
+		return EXIT_FAILURE;
+	}
+
+	printf("init: child %d exited with %d\n", pid, WEXITSTATUS(status));
+	return EXIT_SUCCESS;
+}
+
+int env_test(std::span<const char *> envp)
+{
+	return execute_process("env-test.dsl", {}, envp);
+}
 
 int main()
 {
 	puts("init program executed!");
 	printf("init: getpid: %d\n", getpid());
-	puts("init: spawning my_prog");
 
-	std::vector<const char *> argv1{"hello", "my_prog 1", {}};
-
-	pid_t pid;
-	if (posix_spawn(&pid, "my_prog.dsl", {}, {}, (char **)argv1.data(), {}) == -1)
 	{
-		puts("init: posix_spawn failed");
-		return EXIT_FAILURE;
+		std::vector<const char *> envp{"X=1", "Y=2", "Z=3", {}};
+		env_test(envp);
 	}
 
-	// std::vector<const char *> argv2{"hello", "my_prog 2", {}};
-
-	// pid_t pid2;
-	// if (posix_spawn(&pid, "my_prog.dsl", {}, {}, (char **)argv2.data(), {}) == -1)
-	// {
-	// 	puts("init: posix_spawn failed");
-	// 	return EXIT_FAILURE;
-	// }
-
-	puts("init: spawned, waiting for my_progs...");
-
-	int status;
-	if (const auto cpid = wait(&status))
 	{
-		printf("init: wait returned %d\n", cpid);
-
-		if (!WIFEXITED(status))
-		{
-			puts("init: my_prog did not exit normally!");
-			return EXIT_FAILURE;
-		}
-
-		printf("init: my_prog exited with code %d\n", WEXITSTATUS(status));
+		std::vector<const char *> envp{"X=4", "Y=5", "Z=6", {}};
+		env_test(envp);
 	}
-
-	// for (int i = 0; i < 2; ++i)
-	// {
-	// 	if (const auto cpid = wait(&status))
-	// 	{
-	// 		printf("init: wait returned %d\n", cpid);
-
-	// 		if (cpid == -1)
-	// 		{
-	// 			puts("init: no child processes left, breaking loop");
-	// 			break;
-	// 		}
-
-	// 		if (!WIFEXITED(status))
-	// 		{
-	// 			puts("init: my_prog did not exit normally!");
-	// 			return EXIT_FAILURE;
-	// 		}
-
-	// 		printf("init: my_prog exited with code %d\n", WEXITSTATUS(status));
-	// 	}
-	// }
 
 	puts("init: returning");
 }

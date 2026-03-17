@@ -25,6 +25,7 @@ add_executable(ndsx
 	src/kernel/process_manager.cpp
 	src/kernel/syscalls/fd.cpp
 	src/kernel/syscalls/process.cpp
+	src/kernel/syscalls/pthread.cpp
 	src/kernel/std_streams.c
 )
 target_include_directories(ndsx PRIVATE include)
@@ -54,7 +55,15 @@ blocksds_create_dsl(
 	MAIN_TARGET ndsx
 )
 
-foreach(_dsl IN ITEMS init_process my_prog)
+add_library(env-test STATIC
+	src/programs/env-test.cpp
+)
+blocksds_create_dsl(
+	env-test
+	MAIN_TARGET ndsx
+)
+
+foreach(_dsl IN ITEMS init_process my_prog env-test)
 	execute_process(
 		COMMAND ${CMAKE_COMMAND} -E create_symlink
 			"${${_dsl}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
