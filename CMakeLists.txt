@@ -4,10 +4,10 @@ project(ndsx LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# # prefix the libnds syscall symbols
+# prefix the libnds syscall symbols
+set(OBJCOPY_COMMAND "$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy")
 execute_process(
-	COMMAND
-		"$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy"
+	COMMAND "${OBJCOPY_COMMAND}"
 		"--redefine-syms=${CMAKE_SOURCE_DIR}/libnds_sym_renames.txt"
 		"$ENV{BLOCKSDS}/libs/libnds/lib/libnds9.a"
 		"${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
@@ -27,6 +27,7 @@ add_executable(ndsx
 	src/kernel/syscalls/process.cpp
 	src/kernel/std_streams.c
 )
+target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
 target_link_options(ndsx PRIVATE
 	-Wl,--undefined=fwrite
