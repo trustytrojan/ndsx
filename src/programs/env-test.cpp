@@ -1,34 +1,38 @@
 #include <cstdio>
-#include <cstdlib>
-#include <string_view>
+#include <stdlib.h>
 
-using namespace std::literals;
+extern char **environ;
 
 int main(int, char **, char **envp)
 {
 	puts("env-test:");
 
-	puts(" initial envp:");
-	for (auto s{envp}; *s; ++s)
+	// They should be the same, since we haven't added a new entry to environ yet.
+	printf(" envp == environ: %d\n", envp == environ);
+
+	puts(" initial environ:");
+	for (auto s{environ}; *s; ++s)
 		printf("  '%s'\n", *s);
 
-	// printf(" getenv test:\n  X='%s' Y='%s' Z='%s'\n", getenv("X"), getenv("Y"), getenv("Z"));
-
-	// puts(" setenv test: Y <- 67");
+	// Overwrite Y with "67".
 	setenv("Y", "67", 1);
-	// const auto yval = getenv("Y");
-	// printf("  Y='%s'\n", yval);
-	// if (yval != "67"sv)
-	// 	puts("  FAILED");
 
-	// puts(" unsetenv test: Z");
+	// Delete Z from the environment.
 	unsetenv("Z");
-	// const auto zval = getenv("Z");
-	// printf("  Z='%s'\n", zval);
-	// if (zval)
-	// 	puts("  FAILED");
 
-	puts(" final envp:");
-	for (auto s{envp}; *s; ++s)
+	// Add a new entry.
+	setenv("W", "42", 0);
+
+	// Call setenv with an existing key, but with overwrite=0.
+	setenv("Y", "42", 0);
+
+	// Since setenv("W", "42", 0) causes a realloc() on environ, this should print 0!
+	printf(" envp == environ: %d\n", envp == environ);
+
+	// Given that the initial environment contained some value for Y and Z,
+	// the final environment should contain Y=67 W=42, and no entry for Z.
+	// Any other entries should be unmodified.
+	puts(" final environ:");
+	for (auto s{environ}; *s; ++s)
 		printf("  '%s'\n", *s);
 }

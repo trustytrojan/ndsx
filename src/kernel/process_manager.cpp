@@ -96,7 +96,7 @@ Process *get_process(pid_t pid)
 static int process_start_trampoline(void *arg)
 {
 	auto &p = *(Process *)arg;
-	p.exit_code = p.entrypoint(p.argv.count, p.argv.data, p.envp.data);
+	p.exit_code = p.entrypoint(p.argv.count(), p.argv.data, p.envp.data);
 
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
 	p.status = (p.exit_code << 8) | 0x00;

@@ -7,7 +7,6 @@
 
 struct CStrArray
 {
-	size_t count{};
 	char **data{};
 
 	constexpr CStrArray() = default;
@@ -19,6 +18,7 @@ struct CStrArray
 		if (!src)
 			return;
 
+		size_t count{};
 		while (src[count])
 			++count;
 		// printf("kernel: CStrArray: count: %d\n", count);
@@ -35,7 +35,7 @@ struct CStrArray
 		for (size_t i = 0; i < count; ++i)
 			if (src[i] && !(data[i] = strdup(src[i])))
 			{
-				fputs("kernel: CStrArray: strdup failed, freeing everything\n", stderr);
+				fputs("kernel: CStrArray: strdup failed\n", stderr);
 				// Memory error! Free everything.
 				for (size_t j = 0; j < i; ++j)
 					free(data[j]);
@@ -47,35 +47,44 @@ struct CStrArray
 		// printf("kernel: CStrArray: returning: data=%p count=%d\n", data, count);
 	}
 
-	// Clean up the entire structure
+	// Count how many strings are in the array.
+	constexpr size_t count()
+	{
+		if (!data)
+			return 0;
+		size_t count{};
+		while (data[count])
+			++count;
+		return count;
+	}
+
+	// Frees all strings and the array itself.
 	constexpr void clear()
 	{
 		if (!data)
 			return;
-		for (size_t i = 0; i < count; ++i)
-			if (data[i])
-				free(data[i]);
+		for (auto s{data}; *s; ++s)
+			free(*s);
 		free(data);
 		data = {};
-		count = 0;
 	}
 
 	constexpr ~CStrArray() { clear(); }
 
-	// Manual Move Semantics (The C++ "Nice Semantics" part)
+	// Move constructor
 	constexpr CStrArray(CStrArray &&other) noexcept
-		: data(std::exchange(other.data, nullptr)),
-		  count(std::exchange(other.count, 0))
 	{
+		clear();
+		data = std::exchange(other.data, nullptr);
 	}
 
+	// Move assignment
 	constexpr CStrArray &operator=(CStrArray &&other) noexcept
 	{
 		if (this != &other)
 		{
 			clear();
 			data = std::exchange(other.data, nullptr);
-			count = std::exchange(other.count, 0);
 		}
 		return *this;
 	}
