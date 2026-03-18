@@ -39,35 +39,20 @@ target_link_options(ndsx PRIVATE
 )
 nds_create_rom(ndsx)
 
-add_library(init_process STATIC
-	src/programs/init.cpp
-)
-blocksds_create_dsl(
-	init_process
-	MAIN_TARGET ndsx
-)
-
-add_library(my_prog STATIC
-	src/programs/my_prog.cpp
-)
-blocksds_create_dsl(
-	my_prog
-	MAIN_TARGET ndsx
-)
-
-add_library(env-test STATIC
-	src/programs/env-test.cpp
-)
-blocksds_create_dsl(
-	env-test
-	MAIN_TARGET ndsx
-)
-
-foreach(_dsl IN ITEMS init_process my_prog env-test)
+set(NDSX_PROGRAMS)
+function(create_ndsx_program PROGRAM SOURCES)
+	add_library(${PROGRAM} STATIC ${SOURCES})
+	blocksds_create_dsl(${PROGRAM} MAIN_TARGET ndsx)
+	list(APPEND NDSX_PROGRAMS ${PROGRAM})
 	execute_process(
 		COMMAND ${CMAKE_COMMAND} -E create_symlink
-			"${${_dsl}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
-			"${CMAKE_SOURCE_DIR}/sdcard/${_dsl}.dsl"
+			"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
+			"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
 		COMMAND_ERROR_IS_FATAL ANY
 	)
-endforeach()
+endfunction()
+
+create_ndsx_program(init_process src/programs/init.cpp)
+create_ndsx_program(my_prog src/programs/my_prog.cpp)
+create_ndsx_program(env-test src/programs/env-test.cpp)
+create_ndsx_program(argv-test src/programs/argv-test.cpp)

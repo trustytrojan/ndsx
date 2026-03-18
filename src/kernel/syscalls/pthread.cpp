@@ -4,7 +4,7 @@
 
 extern "C"
 {
-int pthread_create(pthread_t *thread, const pthread_attr_t *, typeof(void *(void *)) *start_routine, void *arg)
+int pthread_create(pthread_t *thread, const pthread_attr_t *, void *(*start_routine)(void *), void *arg)
 {
 	const auto thr = cothread_create((cothread_entrypoint_t)start_routine, arg, 0, 0);
 	if (thr < 0)
@@ -17,7 +17,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *, typeof(void *(void
 int pthread_join(pthread_t thread, void **retval)
 {
 	while (!cothread_has_joined(thread))
-		cothread_yield();
+		pthread_yield();
 	const int rc = cothread_get_exit_code(thread);
 	if (rc == -1)
 		return errno;

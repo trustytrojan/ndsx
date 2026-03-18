@@ -21,9 +21,12 @@ constexpr Process::~Process()
 	for (const auto t : threads)
 	{
 		// printf("kernel: deleting thread %d", t);
-		if (cothread_delete(t) < 0)
-			;
-			// perror("kernel: cothread_delete");
+
+		// The only possible errors are:
+		// - EPERM:  Deleting the current thread
+		// - EINVAL: Thread not in list
+		// Neither are fatal problems, so we can ignore.
+		cothread_delete(t);
 	}
 }
 
@@ -47,8 +50,7 @@ constexpr bool Process::all_threads_joined()
 	return true;
 }
 
-std::list<Process> processes{};
-
+static std::list<Process> processes{};
 static Process &kernel_process = processes.emplace_back();
 static int global_pid_counter = 0;
 
@@ -56,7 +58,6 @@ void set_kernel_process()
 {
 	kernel_process.pid = 0;
 	kernel_process.ppid = -1;
-	// kernel_process.threads[0] = cothread_get_current();
 	kernel_process.threads.emplace_back(cothread_get_current());
 	kernel_process.fdtable[0] = 0;
 	kernel_process.fdtable[1] = 1;
@@ -68,18 +69,15 @@ Process &get_current_process()
 	const auto process = get_process_by_thread(cothread_get_current());
 	if (process)
 		return *process;
-	puts("kernel: get_current_process: current process not found! crashing");
+	puts("kernel: current process not found! crashing");
 	libndsCrash("current process not found");
 }
 
 Process *get_process_by_thread(cothread_t thread)
 {
 	for (auto &p : processes)
-	{
-		for (const auto t : p.threads)
-			if (t == thread)
-				return &p;
-	}
+		if (const auto itr{std::ranges::find(p.threads, thread)}; itr != p.threads.end())
+			return &p;
 	printf("kernel: no process for thread %d\n", thread);
 	return {};
 }
@@ -98,7 +96,7 @@ Process *get_process(pid_t pid)
 static int process_start_trampoline(void *arg)
 {
 	auto &p = *(Process *)arg;
-	p.exit_code = p.entrypoint(p.argc, p.argv.data, p.envp.data);
+	p.exit_code = p.entrypoint(p.argv.count, p.argv.data, p.envp.data);
 
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
 	p.status = (p.exit_code << 8) | 0x00;
@@ -138,6 +136,8 @@ extern "C" int posix_spawn(
 	child.dlhandle = handle;
 	child.pid = ++global_pid_counter;
 	child.ppid = parent.pid;
+	child.entrypoint = entrypoint;
+
 	if (argv)
 	{
 		child.argv = CStrArray(argv);
@@ -145,10 +145,12 @@ extern "C" int posix_spawn(
 		if (!child.argv.data)
 		{
 			errno = ENOMEM;
+			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
 	}
+
 	if (envp)
 	{
 		child.envp = CStrArray(envp);
@@ -156,11 +158,11 @@ extern "C" int posix_spawn(
 		if (!child.envp.data)
 		{
 			errno = ENOMEM;
+			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
 	}
-	child.entrypoint = entrypoint;
 
 	child.fdtable[0] = 0;
 	child.fdtable[1] = 1;
@@ -171,6 +173,7 @@ extern "C" int posix_spawn(
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
+		dlclose(handle);
 		processes.erase(get_process_itr(child.pid));
 		return -1;
 	}
@@ -269,6 +272,7 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		// printf("waitpid: %d yielding\n", parent_pid);
 
 		// use pthread_yield() since, for now, it is the environ-switching wrapper
+		// TODO: wrap the `cothread_*` functions the same way we did for the filesystem syscalls.
 		pthread_yield();
 	}
 }

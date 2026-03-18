@@ -10,6 +10,8 @@ struct CStrArray
 	size_t count{};
 	char **data{};
 
+	constexpr CStrArray() = default;
+
 	// Deep copy from an existing null-terminated array
 	// If any allocation fails, `data` will be NULL.
 	constexpr explicit CStrArray(char *const *src)
@@ -17,8 +19,8 @@ struct CStrArray
 		if (!src)
 			return;
 
-		while (src[count++])
-			;
+		while (src[count])
+			++count;
 		// printf("kernel: CStrArray: count: %d\n", count);
 
 		if (!count)
@@ -33,13 +35,14 @@ struct CStrArray
 		for (size_t i = 0; i < count; ++i)
 			if (src[i] && !(data[i] = strdup(src[i])))
 			{
-				printf("kernel: CStrArray: strdup failed, freeing everything\n");
+				fputs("kernel: CStrArray: strdup failed, freeing everything\n", stderr);
 				// Memory error! Free everything.
-				for (size_t j = 0; j < i; ++i)
+				for (size_t j = 0; j < i; ++j)
 					free(data[j]);
 				free(data);
 				data = {};
 				count = 0;
+				return;
 			}
 		// printf("kernel: CStrArray: returning: data=%p count=%d\n", data, count);
 	}
@@ -61,7 +64,8 @@ struct CStrArray
 
 	// Manual Move Semantics (The C++ "Nice Semantics" part)
 	constexpr CStrArray(CStrArray &&other) noexcept
-		: data(std::exchange(other.data, nullptr))
+		: data(std::exchange(other.data, nullptr)),
+		  count(std::exchange(other.count, 0))
 	{
 	}
 
@@ -71,6 +75,7 @@ struct CStrArray
 		{
 			clear();
 			data = std::exchange(other.data, nullptr);
+			count = std::exchange(other.count, 0);
 		}
 		return *this;
 	}
