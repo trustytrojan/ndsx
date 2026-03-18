@@ -36,6 +36,9 @@ target_link_options(ndsx PRIVATE
 	-Wl,--undefined=getppid
 	-Wl,--undefined=wait
 	-Wl,--undefined=gettimeofday
+	-Wl,--undefined=getenv
+	-Wl,--undefined=setenv
+	-Wl,--undefined=unsetenv
 )
 nds_create_rom(ndsx)
 
