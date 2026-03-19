@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/*, src/**, include/**, CMakeLists.txt]
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/*, src/**, include/**, CMakeLists.txt]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: skylyrac/blocksds:slim-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: |
+          which cmake && exit 0
+          set -e
+          apt-get update
+          apt-get install -y --no-install-recommends cmake
+          which cmake
+
+      - name: Configure CMake
+        run: cmake --preset blocks
+
+      - name: Build project
+        run: cmake --build build -j
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndsx-with-programs
+          if-no-files-found: error
+          path: |
+            ./build/*.nds
+            ./build/*.dsl
