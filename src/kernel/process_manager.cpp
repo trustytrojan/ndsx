@@ -126,6 +126,7 @@ extern "C" int posix_spawn(
 	if (!handle)
 	{
 		printf("kernel: dlopen: %s\n", dlerror());
+		errno = ENOEXEC;
 		return -1;
 	}
 
@@ -133,6 +134,8 @@ extern "C" int posix_spawn(
 	if (!entrypoint)
 	{
 		printf("dlsym: %s\n", dlerror());
+		dlclose(handle);
+		errno = ENOEXEC;
 		return -1;
 	}
 

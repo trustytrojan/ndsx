@@ -74,7 +74,7 @@ void init_console()
 bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
 {
 	// Prevent DSLs from accessing our renamed libnds functions!
-	if ((attributes & DSL_SYMBOL_MAIN_BINARY) && strstr(name, "libnds_") == name) // equiavelent of `starts_with()`
+	if ((attributes & DSL_SYMBOL_MAIN_BINARY) && strstr(name, "libnds_") == name) // equivalent of `starts_with()`
 	{
 		fprintf(stderr, "kernel: blocked access to symbol '%s'\n", name);
 		return false;

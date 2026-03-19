@@ -21,17 +21,14 @@ void cothread_yield(void)
 	// This lets processes have fully isolated environments!
 	extern char **environ;
 
+	// Save `environ` to the current process.
+	// It may have called setenv() with a new key, which causes a realloc() on `environ`.
+	get_current_process().envp.data = environ;
+
 	// Luckily, libnds makes `cothread_t` just a cast of `cothread_info_t *`, which is publicly defined.
 	// The only case in which `next` is NULL is when this thread is the last in libnds's list.
-	// You would think this is a problem, but since the first thread is the libnds main() thread
-	// (which libnds will wrap around to when `next` is NULL), it's the kernel process, which doesn't
-	// need an environment anyway.
 	if (const auto next_thread = (cothread_t)((cothread_info_t *)cothread_get_current())->next)
 	{
-		// Save `environ` to the current process.
-		// It may have called setenv() with a new key, which causes a realloc() on `environ`.
-		get_current_process().envp.data = environ;
-
 		// printf("yield: nt=%d", next_thread);
 		if (const auto next_process = get_process_by_thread(next_thread))
 		{
