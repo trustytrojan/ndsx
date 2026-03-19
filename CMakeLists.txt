@@ -25,6 +25,7 @@ add_executable(ndsx
 	src/kernel/process_manager.cpp
 	src/kernel/syscalls/fd.cpp
 	src/kernel/syscalls/process.cpp
+	src/kernel/syscalls/cothread.cpp
 	src/kernel/std_streams.c
 )
 target_include_directories(ndsx PRIVATE include)
@@ -35,30 +36,28 @@ target_link_options(ndsx PRIVATE
 	-Wl,--undefined=getppid
 	-Wl,--undefined=wait
 	-Wl,--undefined=gettimeofday
+	-Wl,--undefined=getenv
+	-Wl,--undefined=setenv
+	-Wl,--undefined=unsetenv
 )
 nds_create_rom(ndsx)
 
-add_library(init_process STATIC
-	src/programs/init.cpp
-)
-blocksds_create_dsl(
-	init_process
-	MAIN_TARGET ndsx
-)
+function(create_ndsx_program PROGRAM SOURCES)
+	add_library(${PROGRAM} STATIC ${SOURCES})
+	blocksds_create_dsl(${PROGRAM} MAIN_TARGET ndsx)
+	if(NOT "$ENV{CI}")
+		message("Symlinking ${${PROGRAM}_DSL} to ${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl")
+		execute_process(
+			COMMAND ${CMAKE_COMMAND} -E create_symlink
+				"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
+				"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
+			COMMAND_ERROR_IS_FATAL ANY
+		)
+	endif()
+endfunction()
 
-add_library(my_prog STATIC
-	src/programs/my_prog.cpp
-)
-blocksds_create_dsl(
-	my_prog
-	MAIN_TARGET ndsx
-)
-
-foreach(_dsl IN ITEMS init_process my_prog)
-	execute_process(
-		COMMAND ${CMAKE_COMMAND} -E create_symlink
-			"${${_dsl}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
-			"${CMAKE_SOURCE_DIR}/sdcard/${_dsl}.dsl"
-		COMMAND_ERROR_IS_FATAL ANY
-	)
-endforeach()
+create_ndsx_program(init_process src/programs/init.cpp)
+create_ndsx_program(my_prog src/programs/my_prog.cpp)
+create_ndsx_program(env-test src/programs/env-test.cpp)
+create_ndsx_program(argv-test src/programs/argv-test.cpp)
+create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)

@@ -1,41 +1,38 @@
 #pragma once
 
 #include <nds.h>
+#include <pthread.h>
+#include <vector>
 
-using MainFn = int (*)(int argc, char *argv[], char *envp[]);
+#include "CStrArray.hpp"
 
 struct Process
 {
-	static constexpr auto MAX_FDS{8}, MAX_THREADS{8};
+	using MainFn = int (*)(int argc, char *argv[], char *envp[]);
+
+	static constexpr auto MAX_FDS{8};
 
 	void *dlhandle;
 	int pid;
 	int ppid;
 	int fdtable[MAX_FDS];
-	cothread_t threads[MAX_THREADS];
-	int argc;
-	char **argv;
-	char **envp;
+	std::vector<cothread_t> threads;
+	CStrArray argv, envp;
 	MainFn entrypoint;
 	int exit_code;
 	int status;
-	bool has_wait_status;
 
 	constexpr Process()
 		: dlhandle(nullptr),
 		  pid(0),
 		  ppid(-1),
 		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
-		  threads{0, 0, 0, 0, 0, 0, 0, 0},
-		  argc(0),
-		  argv(nullptr),
-		  envp(nullptr),
 		  entrypoint(nullptr),
 		  exit_code(0),
-		  status(0),
-		  has_wait_status(false)
+		  status(0)
 	{
 	}
+
 	constexpr ~Process();
 	constexpr bool all_threads_joined();
 };
@@ -47,4 +44,5 @@ constexpr bool operator==(const Process &a, const Process &b)
 
 Process &get_current_process();
 Process *get_process(pid_t pid);
+Process *get_process_by_thread(cothread_t thread);
 void set_kernel_process();
