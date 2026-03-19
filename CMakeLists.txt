@@ -42,17 +42,18 @@ target_link_options(ndsx PRIVATE
 )
 nds_create_rom(ndsx)
 
-set(NDSX_PROGRAMS)
 function(create_ndsx_program PROGRAM SOURCES)
 	add_library(${PROGRAM} STATIC ${SOURCES})
 	blocksds_create_dsl(${PROGRAM} MAIN_TARGET ndsx)
-	list(APPEND NDSX_PROGRAMS ${PROGRAM})
-	execute_process(
-		COMMAND ${CMAKE_COMMAND} -E create_symlink
-			"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
-			"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
-		COMMAND_ERROR_IS_FATAL ANY
-	)
+	if(NOT "$ENV{CI}")
+		message("Symlinking ${${PROGRAM}_DSL} to ${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl")
+		execute_process(
+			COMMAND ${CMAKE_COMMAND} -E create_symlink
+				"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
+				"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
+			COMMAND_ERROR_IS_FATAL ANY
+		)
+	endif()
 endfunction()
 
 create_ndsx_program(init_process src/programs/init.cpp)
