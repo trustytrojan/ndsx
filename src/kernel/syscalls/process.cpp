@@ -3,7 +3,9 @@
 #include <sys/wait.h>
 
 // Process management system calls.
-// A few of them require sophisticated access to process state, so they are in `process_manager.cpp`.
+
+// posix_spawn() and waitpid() require access to the process list,
+// so they are in `process_manager.cpp`.
 
 extern "C"
 {

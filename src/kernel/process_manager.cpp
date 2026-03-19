@@ -101,6 +101,11 @@ static int process_start_trampoline(void *arg)
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
 	p.status = (p.exit_code << 8) | 0x00;
 
+	// Save `environ` before we implicitly yield and die, so our destructor can properly free it
+	// if we reallocated it via setenv(). See the end of cothread_yield() for more info.
+	extern char **environ;
+	p.envp.data = environ;
+
 	// printf("thread %d exiting\n", cothread_get_current());
 	return p.exit_code;
 }
@@ -113,7 +118,7 @@ extern "C" int posix_spawn(
 	char *const argv[],
 	char *const envp[])
 {
-	const auto &parent = get_current_process();
+	auto &parent = get_current_process();
 	(void)file_actions;
 	(void)attrp;
 
@@ -179,11 +184,14 @@ extern "C" int posix_spawn(
 	}
 	child.threads.emplace_back(thread);
 
+	// Our `cothread_create` override always adds the new thread to the *current process*!
+	// Remove it as it actually belongs to the child process.
+	parent.threads.pop_back();
+
 	if (pid)
 		*pid = child.pid;
 
 	// printf("spawn: pid=%d thread=%d\n", *pid, thread);
-
 	return 0;
 }
 
@@ -254,6 +262,7 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 				*stat_loc = p.status;
 
 			// Consume the child's wait status (reap).
+			// printf("waitpid: reaping %d\n", child_pid);
 			it = processes.erase(it);
 			// printf("waitpid: reaped %d\n", child_pid);
 			return child_pid;
@@ -270,9 +279,6 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 			return 0;
 
 		// printf("waitpid: %d yielding\n", parent_pid);
-
-		// use pthread_yield() since, for now, it is the environ-switching wrapper
-		// TODO: wrap the `cothread_*` functions the same way we did for the filesystem syscalls.
-		pthread_yield();
+		cothread_yield();
 	}
 }

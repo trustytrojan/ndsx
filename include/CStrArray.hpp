@@ -63,8 +63,13 @@ struct CStrArray
 	{
 		if (!data)
 			return;
+		// printf("CStrArray: data: %p\n", data);
 		for (auto s{data}; *s; ++s)
+		{
+			// printf("CStrArray: freeing %p '%s'\n", *s, *s);
 			free(*s);
+		}
+		// printf("CStrArray: freeing %p\n", data);
 		free(data);
 		data = {};
 	}

@@ -28,6 +28,8 @@ int start_init()
 		return -67;
 	}
 
+	// printf("kernel: after init waitpid()\n");
+
 	if (rc != pid)
 	{
 		printf("start_init: waitpid returned wrong child: %d\n", rc);
@@ -64,18 +66,36 @@ void init_console()
 	keyboardShow();
 }
 
-extern "C" void kernel_enable_stdout_buffer();
+// The presence of this macro is a good way to check if we're building against this branch:
+// https://codeberg.org/trustytrojan/libnds/src/branch/dsl-symbol-resolver-callback
+// Rejecting symbol usage isn't a requirement, but lets us prevent processes from
+// calling libnds functions that we override.
+#ifdef DSL_SYMBOL_UNRESOLVED
+bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
+{
+	// Prevent DSLs from accessing our renamed libnds functions!
+	if ((attributes & DSL_SYMBOL_MAIN_BINARY) && strstr(name, "libnds_") == name) // equiavelent of `starts_with()`
+	{
+		fprintf(stderr, "kernel: blocked access to symbol '%s'\n", name);
+		return false;
+	}
+
+	if (!(attributes & DSL_SYMBOL_UNRESOLVED))
+		return true;
+
+	// We aren't doing any symbol resolution yet.
+	return false;
+}
+#endif
 
 int main()
 {
 	defaultExceptionHandler();
 	init_console();
-
-	// we don't need to worry about the setvbuf() calls in consoleInitEx().
-	// it references `libnds_stdout` which is a different `FILE *` than our `stdout`!
-
-	// initializes process 0 with main() thread
 	set_kernel_process();
+#ifdef DSL_SYMBOL_UNRESOLVED
+	dsl_set_symbol_resolver(my_sym_resolver);
+#endif
 
 	printf("ndsx 0.0.1\n\n");
 

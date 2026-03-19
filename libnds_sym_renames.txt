@@ -10,3 +10,6 @@ lseek libnds_lseek
 stdin libnds_stdin
 stdout libnds_stdout
 stderr libnds_stderr
+# cothreading API
+cothread_create libnds_cothread_create
+cothread_yield libnds_cothread_yield

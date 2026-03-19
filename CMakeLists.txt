@@ -25,7 +25,7 @@ add_executable(ndsx
 	src/kernel/process_manager.cpp
 	src/kernel/syscalls/fd.cpp
 	src/kernel/syscalls/process.cpp
-	src/kernel/syscalls/pthread.cpp
+	src/kernel/syscalls/cothread.cpp
 	src/kernel/std_streams.c
 )
 target_include_directories(ndsx PRIVATE include)
@@ -59,3 +59,4 @@ create_ndsx_program(init_process src/programs/init.cpp)
 create_ndsx_program(my_prog src/programs/my_prog.cpp)
 create_ndsx_program(env-test src/programs/env-test.cpp)
 create_ndsx_program(argv-test src/programs/argv-test.cpp)
+create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)

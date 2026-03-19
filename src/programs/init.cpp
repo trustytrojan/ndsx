@@ -71,5 +71,7 @@ int main()
 		env_test(envp);
 	}
 
+	execute_process("jailbreak-test.dsl", {}, {});
+
 	puts("init: returning");
 }
