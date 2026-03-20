@@ -26,6 +26,7 @@ add_executable(ndsx
 	src/kernel/syscalls/fd.cpp
 	src/kernel/syscalls/process.cpp
 	src/kernel/syscalls/cothread.cpp
+	src/kernel/DylibManager.cpp
 	src/kernel/std_streams.c
 )
 target_include_directories(ndsx PRIVATE include)

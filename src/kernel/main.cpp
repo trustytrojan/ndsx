@@ -94,7 +94,8 @@ int main()
 	init_console();
 	set_kernel_process();
 #ifdef DSL_SYMBOL_UNRESOLVED
-	dsl_set_symbol_resolver(my_sym_resolver);
+	bool dep_symbol_resolver(const char *const name, uint32_t *const value, const uint32_t attributes);
+	dsl_set_symbol_resolver(dep_symbol_resolver);
 #endif
 
 	printf("ndsx 0.0.1\n\n");

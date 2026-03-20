@@ -8,7 +8,7 @@ Also, this must be a C file because FDEV_SETUP_POSIX uses `.field` syntax mixed
 with positional fields in a braced initializer, which C++ doesn't like.
 */
 
-// A 1-character buffer make a stream essentially unbuffered.
+// A 1-character buffer makes a stream essentially unbuffered.
 // This is also what `setvbuf(_IONBF)` does.
 static char __stdin_buf[1], __stdout_buf[1], __stderr_buf[1];
 

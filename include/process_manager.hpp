@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "CStrArray.hpp"
+#include "DylibManager.hpp"
 
 struct Process
 {
@@ -12,7 +13,8 @@ struct Process
 
 	static constexpr auto MAX_FDS{8};
 
-	void *dlhandle;
+	// void *dlhandle;
+	DylibManager::Handle dlhandle;
 	int pid;
 	int ppid;
 	int fdtable[MAX_FDS];
