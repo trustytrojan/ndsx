@@ -172,10 +172,12 @@ extern "C" int posix_spawn(
 	child.fdtable[1] = 1;
 	child.fdtable[2] = 2;
 
-	// Attempt to create the process's first thread with a larger stack (16KB)
-	// libnds's default of 4KB is too small for std::filesystem::path and printf.
-	// TODO: THIS IS NOT IDEAL. REWRITE THE DYLIB MANAGER WITHOUT USING C++ CLASSES!
-	const auto thread = cothread_create(process_start_trampoline, &child, 16384, COTHREAD_DETACHED);
+	// Create the child's first thread. It will get 8 KB of stack memory.
+	// libnds's default is 1 KB, which is fine *except* when the thread calls posix_spawn()
+	// with the new dynamic loader. It needs a bit more than 1 KB of stack memory.
+	// Plus, OS kernels conventionally give a process's first/main thread more stack compared
+	// to the default stack size of non-main threads.
+	const auto thread = cothread_create(process_start_trampoline, &child, 8192, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create

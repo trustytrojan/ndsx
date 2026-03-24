@@ -16,7 +16,7 @@ int start_init()
 	pid_t pid;
 	if (posix_spawn(&pid, "init_process.dsl", {}, {}, {}, {}) == -1)
 	{
-		puts("failed to spawn init! crashing");
+		puts("start_init: failed to spawn init! crashing");
 		return -67;
 	}
 
@@ -24,11 +24,9 @@ int start_init()
 	const auto rc = waitpid(pid, &status, 0);
 	if (rc == -1)
 	{
-		perror("waitpid");
+		perror("start_init: waitpid");
 		return -67;
 	}
-
-	// printf("kernel: after init waitpid()\n");
 
 	if (rc != pid)
 	{
