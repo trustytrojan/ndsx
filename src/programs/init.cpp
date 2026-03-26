@@ -9,6 +9,7 @@
 
 int execute_process(const std::string &file, std::span<const char *> argv, std::span<const char *> envp)
 {
+	printf("init: execute_process: '%s'\n", file.c_str());
 	pid_t pid;
 	if (posix_spawn(&pid, file.c_str(), {}, {}, (char **)argv.data(), (char **)envp.data()) == -1)
 	{
