@@ -26,7 +26,7 @@ jobs:
           which cmake
 
       - name: Configure CMake
-        run: cmake --preset blocks
+        run: cmake --preset blocksds
 
       - name: Build project
         run: cmake --build build -j
