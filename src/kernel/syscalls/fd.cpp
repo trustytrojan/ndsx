@@ -155,4 +155,76 @@ off_t lseek(int fd, off_t offset, int whence)
 	typeof(lseek) libnds_lseek;
 	return libnds_lseek(kernel_fd, offset, whence);
 }
+
+int dup(int oldfd)
+{
+	if (oldfd < 0 || oldfd >= Process::MAX_FDS)
+	{
+		errno = EBADF;
+		return -1;
+	}
+
+	auto &p = get_current_process();
+
+	// get existing KERNEL fd
+	const auto kernel_fd = p.fdtable[oldfd];
+	if (kernel_fd < 0)
+	{
+		errno = EBADF;
+		return -1;
+	}
+
+	// find first open slot
+	int i = 0;
+	for (; i < Process::MAX_FDS && p.fdtable[i] >= 0; ++i)
+		;
+
+	if (i >= Process::MAX_FDS)
+	{
+		errno = ENFILE;
+		return -1;
+	}
+
+	// map USER fd `i` to KERNEL fd `kernel_fd`
+	p.fdtable[i] = kernel_fd;
+
+	// we return the USER fd, not the KERNEL fd which should be private to us
+	return i;
+}
+
+int dup2(int oldfd, int newfd)
+{
+	if (oldfd < 0 || oldfd >= Process::MAX_FDS || newfd < 0 || newfd >= Process::MAX_FDS)
+	{
+		errno = EBADF;
+		return -1;
+	}
+
+	if (oldfd == newfd)
+		return 0;
+
+	auto &p = get_current_process();
+
+	// get existing KERNEL fd
+	const auto kernel_oldfd = p.fdtable[oldfd];
+	if (kernel_oldfd < 0)
+	{
+		errno = EBADF;
+		return -1;
+	}
+
+	// get target KERNEL fd, close it if in use
+	const auto kernel_newfd = p.fdtable[newfd];
+	if (kernel_newfd >= 0)
+	{
+		typeof(close) libnds_close;
+		libnds_close(kernel_newfd);
+	}
+
+	// map newfd to same KERNEL fd as oldfd
+	p.fdtable[newfd] = kernel_oldfd;
+
+	// we return the USER fd, not the KERNEL fd which should be private to us
+	return newfd;
+}
 }

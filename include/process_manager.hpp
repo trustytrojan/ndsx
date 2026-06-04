@@ -15,6 +15,7 @@ struct Process
 	void *dlhandle;
 	int pid;
 	int ppid;
+	int pgid;
 	int fdtable[MAX_FDS];
 	std::vector<cothread_t> threads;
 	CStrArray argv, envp;
@@ -26,6 +27,7 @@ struct Process
 		: dlhandle(nullptr),
 		  pid(0),
 		  ppid(-1),
+		  pgid(0),
 		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
 		  entrypoint(nullptr),
 		  exit_code(0),
@@ -45,4 +47,6 @@ constexpr bool operator==(const Process &a, const Process &b)
 Process &get_current_process();
 Process *get_process(pid_t pid);
 Process *get_process_by_thread(cothread_t thread);
+int set_process_group(pid_t pid, pid_t pgid);
+int kill_process_group(pid_t pgid, int sig);
 void set_kernel_process();

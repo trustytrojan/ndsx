@@ -21,26 +21,22 @@ set_target_properties(nds9-prefixed PROPERTIES
 # remove `-Wl,-lnds9` so we can link to our modified libnds instead
 set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--end-group")
 
+set(SYMBOLS __aeabi_ddiv __aeabi_d2iz __aeabi_dmul _ctype_b atoi bsearch closedir conv_escape dup dup2 echocmd execve fcntl fork fstat getcwd getegid geteuid getgid getpgrp getuid isatty iswblank iswctype kill killpg longjmp lstat mbrlen mbrtowc mbsrtowcs memmove mempcpy memrchr opendir pipe printfcmd qsort readdir realloc setjmp setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtoimax strtok tcgetattr tcgetpgrp tcsetpgrp test_access testcmd timescmd umask vfork vsnprintf wait3 wcschr wctype fwrite fputs getppid wait gettimeofday getenv setenv unsetenv getgroups strtod strtoumax sysconf times getpid)
+
 add_executable(ndsx
 	src/kernel/main.cpp
 	src/kernel/process_manager.cpp
 	src/kernel/syscalls/fd.cpp
 	src/kernel/syscalls/process.cpp
 	src/kernel/syscalls/cothread.cpp
+	src/kernel/syscalls/misc.cpp
 	src/kernel/std_streams.c
 )
 target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
-target_link_options(ndsx PRIVATE
-	-Wl,--undefined=fwrite
-	-Wl,--undefined=fputs
-	-Wl,--undefined=getppid
-	-Wl,--undefined=wait
-	-Wl,--undefined=gettimeofday
-	-Wl,--undefined=getenv
-	-Wl,--undefined=setenv
-	-Wl,--undefined=unsetenv
-)
+foreach(SYMBOL IN LISTS SYMBOLS)
+	target_link_options(ndsx PRIVATE -Wl,--undefined=${SYMBOL})
+endforeach()
 nds_create_rom(ndsx)
 
 function(create_ndsx_program PROGRAM SOURCES)
@@ -64,3 +60,13 @@ create_ndsx_program(my_prog src/programs/my_prog.cpp)
 create_ndsx_program(env-test src/programs/env-test.cpp)
 create_ndsx_program(argv-test src/programs/argv-test.cpp)
 create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)
+
+# 1. Define an IMPORTED static library target
+add_library(dash_lib STATIC IMPORTED GLOBAL)
+
+# 2. Point CMake to the actual location of the pre-built static file
+set_target_properties(dash_lib PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libdash.a"
+)
+
+blocksds_create_dsl(dash_lib MAIN_TARGET ndsx)

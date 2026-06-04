@@ -3,9 +3,10 @@
 
 #include <dlfcn.h>
 #include <pthread.h>
+#include <signal.h>
 #include <spawn.h>
 
-#include <cerrno>
+#include <errno.h>
 #include <list>
 
 constexpr Process::~Process()
@@ -54,10 +55,16 @@ static std::list<Process> processes{};
 static Process &kernel_process = processes.emplace_back();
 static int global_pid_counter = 0;
 
+static pid_t normalize_process_group_id(pid_t pid, pid_t pgid)
+{
+	return (pgid == 0) ? pid : pgid;
+}
+
 void set_kernel_process()
 {
 	kernel_process.pid = 0;
 	kernel_process.ppid = -1;
+	kernel_process.pgid = 0;
 	kernel_process.threads.emplace_back(cothread_get_current());
 	kernel_process.fdtable[0] = 0;
 	kernel_process.fdtable[1] = 1;
@@ -80,6 +87,81 @@ Process *get_process_by_thread(cothread_t thread)
 			return &p;
 	printf("kernel: no process for thread %d\n", thread);
 	return {};
+}
+
+int set_process_group(pid_t pid, pid_t pgid)
+{
+	auto &current = get_current_process();
+	if (pid == 0)
+		pid = current.pid;
+
+	auto *process = get_process(pid);
+	if (!process)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	if (pgid < 0)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+
+	const auto current_pid = current.pid;
+	if (process->pid != current_pid && process->ppid != current_pid)
+	{
+		errno = EPERM;
+		return -1;
+	}
+
+	process->pgid = normalize_process_group_id(process->pid, pgid);
+	return 0;
+}
+
+int kill_process_group(pid_t pgid, int sig)
+{
+	if (sig <= 0 || sig >= NSIG)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+
+	auto &current = get_current_process();
+	if (pgid == 0)
+		pgid = current.pgid;
+
+	if (pgid <= 0)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	bool found = false;
+	for (auto &process : processes)
+	{
+		if (process.pgid != pgid)
+			continue;
+
+		found = true;
+		process.exit_code = 128 + sig;
+		process.status = sig & 0x7f;
+
+		for (const auto thread : process.threads)
+		{
+			if (thread == cothread_get_current())
+				continue;
+			cothread_delete(thread);
+		}
+	}
+
+	if (!found)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	return 0;
 }
 
 auto get_process_itr(pid_t pid)
@@ -144,6 +226,7 @@ extern "C" int posix_spawn(
 	child.dlhandle = handle;
 	child.pid = ++global_pid_counter;
 	child.ppid = parent.pid;
+	child.pgid = parent.pgid;
 	child.entrypoint = entrypoint;
 
 	if (argv)
@@ -198,27 +281,11 @@ extern "C" int posix_spawn(
 	return 0;
 }
 
-static bool waitpid_pid_matches(const Process &p, pid_t parent_pid, pid_t pid)
-{
-	if (p.ppid != parent_pid)
-		return false;
-
-	if (pid == -1)
-		return true;
-
-	if (pid > 0)
-		return p.pid == pid;
-
-	// Process groups are not modeled yet; approximate pid==0 as "any child in caller group".
-	if (pid == 0)
-		return true;
-
-	return false;
-}
-
 extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 {
-	const auto parent_pid = getpid();
+	const auto &parent = get_current_process();
+	const auto parent_pid = parent.pid;
+	const auto parent_pgid = parent.pgid;
 
 	int supported_options = WNOHANG;
 #ifdef WUNTRACED
@@ -234,14 +301,6 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		return -1;
 	}
 
-	if (pid < -1)
-	{
-		// We do not track process groups yet.
-		puts("waitpid: pid < -1");
-		errno = ECHILD;
-		return -1;
-	}
-
 	const bool nohang = (options & WNOHANG) != 0;
 
 	for (;;)
@@ -251,7 +310,20 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		for (auto it = processes.begin(); it != processes.end(); ++it)
 		{
 			auto &p = *it;
-			if (!waitpid_pid_matches(p, parent_pid, pid))
+			if (p.ppid != parent_pid)
+				continue;
+
+			bool matches = false;
+			if (pid == -1)
+				matches = true;
+			else if (pid > 0)
+				matches = (p.pid == pid);
+			else if (pid == 0)
+				matches = (p.pgid == parent_pgid);
+			else
+				matches = (p.pgid == -pid);
+
+			if (!matches)
 				continue;
 
 			has_matching_child = true;

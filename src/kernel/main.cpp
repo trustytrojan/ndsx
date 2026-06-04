@@ -28,8 +28,6 @@ int start_init()
 		return -67;
 	}
 
-	// printf("kernel: after init waitpid()\n");
-
 	if (rc != pid)
 	{
 		printf("start_init: waitpid returned wrong child: %d\n", rc);
@@ -66,11 +64,7 @@ void init_console()
 	keyboardShow();
 }
 
-// The presence of this macro is a good way to check if we're building against this branch:
-// https://codeberg.org/trustytrojan/libnds/src/branch/dsl-symbol-resolver-callback
-// Rejecting symbol usage isn't a requirement, but lets us prevent processes from
-// calling libnds functions that we override.
-#ifdef DSL_SYMBOL_UNRESOLVED
+// Prevent processes from calling libnds functions that we override.
 bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
 {
 	// Prevent DSLs from accessing our renamed libnds functions!
@@ -86,16 +80,13 @@ bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32
 	// We aren't doing any symbol resolution yet.
 	return false;
 }
-#endif
 
 int main()
 {
 	defaultExceptionHandler();
 	init_console();
 	set_kernel_process();
-#ifdef DSL_SYMBOL_UNRESOLVED
 	dsl_set_symbol_resolver(my_sym_resolver);
-#endif
 
 	printf("ndsx 0.0.1\n\n");
 
