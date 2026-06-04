@@ -1,5 +1,7 @@
 # process management
 getpid libnds_getpid
+wait libnds_wait
+waitpid libnds_waitpid
 # file descriptors
 open libnds_open
 close libnds_close

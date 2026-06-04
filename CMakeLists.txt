@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # prefix the libnds syscall symbols
+# TODO: make this a custom command/target so that it depends on libnds_sym_renames.txt
 set(OBJCOPY_COMMAND "$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy")
 execute_process(
 	COMMAND "${OBJCOPY_COMMAND}"
@@ -46,13 +47,15 @@ function(create_ndsx_program PROGRAM SOURCES)
 	add_library(${PROGRAM} STATIC ${SOURCES})
 	blocksds_create_dsl(${PROGRAM} MAIN_TARGET ndsx)
 	if(NOT "$ENV{CI}")
-		message("Symlinking ${${PROGRAM}_DSL} to ${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl")
-		execute_process(
+		make_directory("${CMAKE_SOURCE_DIR}/sdcard")
+		add_custom_command(
+			OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
 			COMMAND ${CMAKE_COMMAND} -E create_symlink
 				"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
 				"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
-			COMMAND_ERROR_IS_FATAL ANY
+			MAIN_DEPENDENCY "${${PROGRAM}_DSL}"
 		)
+		add_custom_target(link_${PROGRAM}_into_sdcard ALL DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl")
 	endif()
 endfunction()
 
