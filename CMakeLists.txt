@@ -21,7 +21,13 @@ set_target_properties(nds9-prefixed PROPERTIES
 # remove `-Wl,-lnds9` so we can link to our modified libnds instead
 set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--end-group")
 
-set(SYMBOLS __aeabi_ddiv __aeabi_d2iz __aeabi_dmul _ctype_b atoi bsearch closedir conv_escape dup dup2 echocmd execve fcntl fork fstat getcwd getegid geteuid getgid getpgrp getuid isatty iswblank iswctype kill killpg longjmp lstat mbrlen mbrtowc mbsrtowcs memmove mempcpy memrchr opendir pipe printfcmd qsort readdir realloc setjmp setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtoimax strtok tcgetattr tcgetpgrp tcsetpgrp test_access testcmd timescmd umask vfork vsnprintf wait3 wcschr wctype fwrite fputs getppid wait gettimeofday getenv setenv unsetenv getgroups strtod strtoumax sysconf times getpid)
+set(SYMBOLS
+	# test program symbols
+	gettimeofday fputs getpid getppid setenv unsetenv
+
+	# dash symbols
+	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getuid isatty iswblank iswctype kill longjmp lstat mbrlen mbrtowc mbsrtowcs memmove mempcpy memrchr opendir pipe qsort readdir realloc setjmp setlocale sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr times umask vfork vsnprintf wcschr wctype
+)
 
 add_executable(ndsx
 	src/kernel/main.cpp

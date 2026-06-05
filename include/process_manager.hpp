@@ -19,6 +19,8 @@ struct Process
 	int ppid;
 	int pgid;
 	int fdtable[MAX_FDS];
+	int fdflags[MAX_FDS];
+	int fdstatus[MAX_FDS];
 	std::vector<cothread_t> threads;
 	CStrArray argv, envp;
 	MainFn entrypoint;
@@ -35,6 +37,8 @@ struct Process
 		  ppid(-1),
 		  pgid(0),
 		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
+		  fdflags{0,0,0,0,0,0,0,0},
+		  fdstatus{0,0,0,0,0,0,0,0},
 		  entrypoint(nullptr),
 		  exit_code(0),
 		  status(0)

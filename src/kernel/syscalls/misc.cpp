@@ -21,4 +21,15 @@ int getgroups(int gidsetsize, gid_t grouplist[])
 	// Since we have 0 groups, we write nothing to the array and return 0.
 	return 0;
 }
+
+int tcgetattr(int fd, struct termios *termios_p)
+{
+	errno = ENOTTY;
+	return -1;
+}
+
+mode_t umask(mode_t cmask)
+{
+	return 0;
+}
 }
