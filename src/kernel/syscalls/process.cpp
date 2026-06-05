@@ -24,16 +24,6 @@ pid_t getpgrp()
 	return get_current_process().pgid;
 }
 
-int killpg(int pgrp, int sig)
-{
-	return kill_process_group(pgrp, sig);
-}
-
-int setpgid(pid_t pid, pid_t pgid)
-{
-	return set_process_group(pid, pgid);
-}
-
 pid_t wait(int *stat_loc)
 {
 	return waitpid(-1, stat_loc, 0);

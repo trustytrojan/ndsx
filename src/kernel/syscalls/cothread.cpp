@@ -54,5 +54,8 @@ void cothread_yield(void)
 	// which doesn't call our wrapper and therefore leaves `environ` pointing to its own environment!
 	// We MUST restore `environ` to our environment to prevent claiming ownership of a dead thread's environment.
 	environ = get_current_process().envp.data;
+
+	// Deliver any unblocked pending signals before returning to userspace.
+	deliver_pending_signals(get_current_process());
 }
 }

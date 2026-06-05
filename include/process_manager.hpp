@@ -2,7 +2,9 @@
 
 #include <nds.h>
 #include <pthread.h>
+#include <array>
 #include <vector>
+#include <signal.h>
 
 #include "CStrArray.hpp"
 
@@ -22,6 +24,10 @@ struct Process
 	MainFn entrypoint;
 	int exit_code;
 	int status;
+	std::array<struct sigaction, NSIG> signal_actions;
+	sigset_t signal_mask;
+	sigset_t pending_signals;
+	
 
 	constexpr Process()
 		: dlhandle(nullptr),
@@ -47,6 +53,5 @@ constexpr bool operator==(const Process &a, const Process &b)
 Process &get_current_process();
 Process *get_process(pid_t pid);
 Process *get_process_by_thread(cothread_t thread);
-int set_process_group(pid_t pid, pid_t pgid);
-int kill_process_group(pid_t pgid, int sig);
+bool deliver_pending_signals(Process &process, bool *caught_signal = nullptr);
 void set_kernel_process();
