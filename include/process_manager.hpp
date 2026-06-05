@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
+#include <csetjmp>
+#include <memory>
 #include <nds.h>
 #include <pthread.h>
-#include <array>
-#include <vector>
 #include <signal.h>
+#include <vector>
 
 #include "CStrArray.hpp"
 
@@ -14,7 +16,7 @@ struct Process
 
 	static constexpr auto MAX_FDS{8};
 
-	void *dlhandle;
+	std::shared_ptr<void> dlhandle;
 	int pid;
 	int ppid;
 	int pgid;
@@ -29,7 +31,8 @@ struct Process
 	std::array<struct sigaction, NSIG> signal_actions;
 	sigset_t signal_mask;
 	sigset_t pending_signals;
-	
+	jmp_buf vfork_env;
+	bool is_vfork_suspended = false;
 
 	constexpr Process()
 		: dlhandle(nullptr),
@@ -37,16 +40,17 @@ struct Process
 		  ppid(-1),
 		  pgid(0),
 		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
-		  fdflags{0,0,0,0,0,0,0,0},
-		  fdstatus{0,0,0,0,0,0,0,0},
+		  fdflags{0, 0, 0, 0, 0, 0, 0, 0},
+		  fdstatus{0, 0, 0, 0, 0, 0, 0, 0},
 		  entrypoint(nullptr),
 		  exit_code(0),
 		  status(0)
 	{
 	}
 
-	constexpr ~Process();
-	constexpr bool all_threads_joined();
+	constexpr ~Process() { cleanup(); }
+	bool all_threads_joined();
+	void cleanup();
 };
 
 constexpr bool operator==(const Process &a, const Process &b)

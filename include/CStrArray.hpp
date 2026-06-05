@@ -94,7 +94,10 @@ struct CStrArray
 		return *this;
 	}
 
-	// Explicitly forbid copying to prevent accidental double-frees
-	constexpr CStrArray(const CStrArray &) = delete;
+	constexpr CStrArray(const CStrArray &other)
+		: CStrArray(other.data)
+	{
+	}
+
 	constexpr CStrArray &operator=(const CStrArray &) = delete;
 };

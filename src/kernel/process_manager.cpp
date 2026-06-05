@@ -1,7 +1,9 @@
+#include <csetjmp>
 #include <nds/cothread.h>
 #include <process_manager.hpp>
 
 #include <dlfcn.h>
+#include <malloc.h>
 #include <pthread.h>
 #include <signal.h>
 #include <spawn.h>
@@ -10,14 +12,13 @@
 #include <list>
 #include <sys/_wait.h>
 
-constexpr Process::~Process()
+void Process::cleanup()
 {
-	if (dlhandle && dlclose(dlhandle) < 0)
-		printf("kernel: dlclose: %s\n", dlerror());
-	for (const auto fd : fdtable)
+	for (const auto kernel_fd : fdtable)
 	{
 		// We don't want to close libnds's standard streams! Close everything else, though.
-		if (fd > STDERR_FILENO && close(fd) == -1)
+		typeof(close) libnds_close;
+		if (kernel_fd > STDERR_FILENO && libnds_close(kernel_fd) == -1)
 			perror("kernel: close");
 	}
 	for (const auto t : threads)
@@ -32,7 +33,7 @@ constexpr Process::~Process()
 	}
 }
 
-constexpr bool Process::all_threads_joined()
+bool Process::all_threads_joined()
 {
 	for (const auto thread : threads)
 	{
@@ -147,10 +148,8 @@ static SignalDeliveryResult deliver_signal(Process &process, const int sig)
 	sigset_t handler_mask = old_mask;
 
 	for (int blocked_sig = 1; blocked_sig < NSIG; ++blocked_sig)
-	{
 		if (sigismember(&action.sa_mask, blocked_sig) == 1)
 			sigaddset(&handler_mask, blocked_sig);
-	}
 
 	if ((action.sa_flags & SA_NODEFER) == 0)
 		sigaddset(&handler_mask, sig);
@@ -184,14 +183,14 @@ bool deliver_pending_signals(Process &process, bool *caught_signal)
 
 		switch (deliver_signal(process, sig))
 		{
-			case SignalDeliveryResult::None:
-				continue;
-			case SignalDeliveryResult::Caught:
-				if (caught_signal)
-					*caught_signal = true;
-				return true;
-			case SignalDeliveryResult::Terminated:
-				return true;
+		case SignalDeliveryResult::None:
+			continue;
+		case SignalDeliveryResult::Caught:
+			if (caught_signal)
+				*caught_signal = true;
+			return true;
+		case SignalDeliveryResult::Terminated:
+			return true;
 		}
 	}
 
@@ -265,6 +264,105 @@ static int process_start_trampoline(void *arg)
 // Syscalls that need to modify process state are below; others are in src/kernel/syscalls/process.cpp.
 extern "C"
 {
+pid_t vfork()
+{
+	auto &parent = get_current_process();
+
+	// Save the parent's state.
+	// setjmp returns 0 initially. When we longjmp back later, it will return the child PID.
+	pid_t ret = setjmp(parent.vfork_env);
+
+	if (ret == 0)
+	{
+		auto &child = processes.emplace_back(parent);
+		child.pid = ++global_pid_counter;
+		child.ppid = parent.pid;
+		sigemptyset(&child.pending_signals);
+		child.threads.clear();
+
+		// "Borrow" the current cothread
+		auto current_thread = cothread_get_current();
+
+		// Remove thread from parent, mark parent as suspended
+		auto it = std::ranges::find(parent.threads, current_thread);
+		if (it != parent.threads.end())
+			parent.threads.erase(it);
+		parent.is_vfork_suspended = true;
+
+		// Assign thread to child
+		child.threads.push_back(current_thread);
+
+		// Return 0 to user-space
+		return 0;
+	}
+	else
+	{
+		// --- WE ARE THE PARENT (Second Return via longjmp) ---
+
+		// The child has finished borrowing our thread.
+		parent.is_vfork_suspended = false;
+
+		// 'ret' contains the value passed to longjmp, which we will ensure is the child PID!
+		return ret;
+	}
+}
+
+void _exit(int status)
+{
+	Process &current = get_current_process();
+
+	// Check if we are a vfork child running on a borrowed thread
+	auto parent = get_process(current.ppid);
+	if (!parent)
+	{
+		// The only case in which this can happen is the kernel process itself calling _exit()...
+		puts("kernel: _exit: current process has no parent");
+		libndsCrash("current process has no parent");
+	}
+
+	if (parent->is_vfork_suspended)
+	{
+		// --- VFORK CLEANUP ---
+		cothread_t borrowed_thread = cothread_get_current();
+
+		// 1. Mark child as a Zombie (so waitpid works)
+		current.exit_code = status;
+		current.status = (current.exit_code << 8) | 0x00;
+
+		// 2. Take the thread back from the child
+		auto it = std::ranges::find(current.threads, borrowed_thread);
+		if (it != current.threads.end())
+			current.threads.erase(it);
+
+		// 3. Give the thread back to the parent
+		parent->threads.push_back(borrowed_thread);
+
+		// 4. Time travel! Warp the CPU back into the parent's vfork() call.
+		// We pass current.pid, which causes setjmp in vfork() to return the child's PID.
+		longjmp(parent->vfork_env, current.pid);
+	}
+	else
+	{
+		// --- STANDARD EXIT ---
+		// Normal cleanup, cothread_delete(), etc.
+
+		current.exit_code = status;
+		current.status = (current.exit_code << 8) | 0x00;
+		current.cleanup();
+
+		// Manually set as joined & detached, then yield to scheduler.
+		// This is just one way to delete ourself from the scheduler.
+		auto &ctx = *(cothread_info_t *)cothread_get_current();
+		ctx.joined = 1;
+		ctx.flags |= COTHREAD_DETACHED;
+		typeof(cothread_yield) libnds_cothread_yield;
+		libnds_cothread_yield();
+	}
+
+	printf("kernel: _exit is returning");
+	libndsCrash("_exit is returning");
+}
+
 int posix_spawn(
 	pid_t *pid,
 	const char *path,
@@ -296,7 +394,13 @@ int posix_spawn(
 
 	// Create the process object first, then create the thread with a stable address.
 	auto &child = processes.emplace_back();
-	child.dlhandle = handle;
+	child.dlhandle = {
+		handle,
+		[](auto ptr)
+		{
+			if (ptr && dlclose(ptr) < 0)
+				printf("kernel: dlclose: %s\n", dlerror());
+		}};
 	child.pid = ++global_pid_counter;
 	child.ppid = parent.pid;
 	child.pgid = parent.pgid;
@@ -309,7 +413,6 @@ int posix_spawn(
 		if (!child.argv.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
@@ -322,7 +425,6 @@ int posix_spawn(
 		if (!child.envp.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
@@ -339,7 +441,6 @@ int posix_spawn(
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
-		dlclose(handle);
 		processes.erase(get_process_itr(child.pid));
 		return -1;
 	}
