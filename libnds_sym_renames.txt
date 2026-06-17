@@ -2,6 +2,8 @@
 getpid libnds_getpid
 wait libnds_wait
 waitpid libnds_waitpid
+_exit libnds__exit
+execve libnds_execve
 # file descriptors
 open libnds_open
 close libnds_close

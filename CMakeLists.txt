@@ -3,6 +3,7 @@ project(ndsx LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_compile_definitions(MSPACES=1)
 
 # prefix the libnds syscall symbols
 # TODO: make this a custom command/target so that it depends on libnds_sym_renames.txt
@@ -22,8 +23,7 @@ set_target_properties(nds9-prefixed PROPERTIES
 set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--end-group")
 
 set(SYMBOLS
-	# test program symbols
-	gettimeofday fputs getpid getppid setenv unsetenv
+	gettimeofday fputs getpid getppid setenv unsetenv libnds_close
 
 	# dash symbols
 	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getuid isatty iswblank iswctype kill longjmp lstat mbrlen mbrtowc mbsrtowcs memmove mempcpy memrchr opendir pipe qsort readdir realloc setjmp setlocale sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr times umask vfork vsnprintf wcschr wctype
@@ -75,4 +75,4 @@ set_target_properties(dash_lib PROPERTIES
     IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libdash.a"
 )
 
-blocksds_create_dsl(dash_lib MAIN_TARGET ndsx)
+blocksds_create_dsl(dash_lib MAIN_TARGET ndsx IGNORE_UNRESOLVED_SYMBOLS)

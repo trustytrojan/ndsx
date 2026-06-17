@@ -33,6 +33,7 @@ struct Process
 	sigset_t pending_signals;
 	jmp_buf vfork_env;
 	bool is_vfork_suspended = false;
+	void *vfork_saved_lr = nullptr; // Stash dash's return address here
 
 	constexpr Process()
 		: dlhandle(nullptr),
