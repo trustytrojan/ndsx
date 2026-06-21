@@ -29,7 +29,8 @@ int ndsx_keyboardGetChar()
 		c = keyboardUpdate();
 		if (c > 0)
 			break;
-		cothread_yield_irq(IRQ_VBLANK);
+		// cothread_yield_irq(IRQ_VBLANK);
+		cothread_yield();
 	}
 
 	if (c == '\n')

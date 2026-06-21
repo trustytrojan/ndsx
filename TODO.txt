@@ -1,0 +1,2 @@
+STOP trying to implement vfork() when instead you can just modify dash to only use posix_spawn()
+you will still need to implement _exit() though

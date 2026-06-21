@@ -21,7 +21,7 @@ struct CStrArray
 		size_t count{};
 		while (src[count])
 			++count;
-		// printf("kernel: CStrArray: count: %d\n", count);
+		// printf("CStrArray(%p): count: %d\n", this, count);
 
 		if (!count)
 			return;
@@ -30,12 +30,12 @@ struct CStrArray
 		if (!data)
 			return;
 
-		// printf("kernel: CStrArray: calloc'd data: %p\n", data);
+		// printf("[c] t=%p\n", this);
 
 		for (size_t i = 0; i < count; ++i)
 			if (src[i] && !(data[i] = strdup(src[i])))
 			{
-				fputs("kernel: CStrArray: strdup failed\n", stderr);
+				puts("CStrArray: strdup failed");
 				// Memory error! Free everything.
 				for (size_t j = 0; j < i; ++j)
 					free(data[j]);
@@ -44,7 +44,7 @@ struct CStrArray
 				count = 0;
 				return;
 			}
-		// printf("kernel: CStrArray: returning: data=%p count=%d\n", data, count);
+		printf("C: t=%p d=%p\n", this, data);
 	}
 
 	// Count how many strings are in the array.
@@ -63,7 +63,7 @@ struct CStrArray
 	{
 		if (!data)
 			return;
-		// printf("CStrArray: data: %p\n", data);
+		printf("c: t=%p d=%p\n", this, data);
 		for (auto s{data}; *s; ++s)
 		{
 			// printf("CStrArray: freeing %p '%s'\n", *s, *s);
@@ -81,6 +81,7 @@ struct CStrArray
 	{
 		clear();
 		data = std::exchange(other.data, nullptr);
+		printf("m: t=%p o=%p d=%p\n", this, &other, data);
 	}
 
 	// Move assignment
@@ -90,6 +91,7 @@ struct CStrArray
 		{
 			clear();
 			data = std::exchange(other.data, nullptr);
+			printf("m: t=%p o=%p d=%p\n", this, &other, data);
 		}
 		return *this;
 	}

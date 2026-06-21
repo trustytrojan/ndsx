@@ -31,7 +31,7 @@ struct Process
 	std::array<struct sigaction, NSIG> signal_actions;
 	sigset_t signal_mask;
 	sigset_t pending_signals;
-	jmp_buf vfork_env;
+	jmp_buf vfork_env, exit_env;
 	bool is_vfork_suspended = false;
 	void *vfork_saved_lr = nullptr; // Stash dash's return address here
 
@@ -64,3 +64,11 @@ Process *get_process(pid_t pid);
 Process *get_process_by_thread(cothread_t thread);
 bool deliver_pending_signals(Process &process, bool *caught_signal = nullptr);
 void set_kernel_process();
+
+struct nds_critical_section
+{
+	const int oldIME = enterCriticalSection();
+	constexpr ~nds_critical_section() { leaveCriticalSection(oldIME); }
+};
+
+void transfer_current_thread(Process &from, Process &to);

@@ -8,10 +8,18 @@ add_compile_definitions(MSPACES=1)
 # prefix the libnds syscall symbols
 # TODO: make this a custom command/target so that it depends on libnds_sym_renames.txt
 set(OBJCOPY_COMMAND "$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+	set(LIBNDS9_FILENAME "libnds9d.a")
+else()
+	set(LIBNDS9_FILENAME "libnds9.a")
+endif()
+message("LIBNDS9_FILENAME: '${LIBNDS9_FILENAME}'")
+
 execute_process(
 	COMMAND "${OBJCOPY_COMMAND}"
 		"--redefine-syms=${CMAKE_SOURCE_DIR}/libnds_sym_renames.txt"
-		"$ENV{BLOCKSDS}/libs/libnds/lib/libnds9.a"
+		"$ENV{BLOCKSDS}/libs/libnds/lib/${LIBNDS9_FILENAME}"
 		"${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
 	COMMAND_ERROR_IS_FATAL ANY
 )
@@ -26,7 +34,7 @@ set(SYMBOLS
 	gettimeofday fputs getpid getppid setenv unsetenv libnds_close
 
 	# dash symbols
-	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getuid isatty iswblank iswctype kill longjmp lstat mbrlen mbrtowc mbsrtowcs memmove mempcpy memrchr opendir pipe qsort readdir realloc setjmp setlocale sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr times umask vfork vsnprintf wcschr wctype
+	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
 )
 
 add_executable(ndsx
@@ -36,7 +44,9 @@ add_executable(ndsx
 	src/kernel/syscalls/process.cpp
 	src/kernel/syscalls/cothread.cpp
 	src/kernel/syscalls/misc.cpp
+	src/kernel/syscalls/execve.cpp
 	src/kernel/std_streams.c
+	src/kernel/syscalls/_exit.cpp
 )
 target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
