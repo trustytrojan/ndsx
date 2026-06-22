@@ -7,7 +7,6 @@
 #include <process_manager.hpp>
 
 #include <dlfcn.h>
-#include <pthread.h>
 #include <signal.h>
 #include <spawn.h>
 

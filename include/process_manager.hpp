@@ -4,7 +4,6 @@
 #include <csetjmp>
 #include <memory>
 #include <nds.h>
-#include <pthread.h>
 #include <signal.h>
 #include <vector>
 
