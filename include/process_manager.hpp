@@ -1,61 +1,8 @@
 #pragma once
 
-#include <array>
-#include <csetjmp>
-#include <memory>
 #include <nds.h>
-#include <signal.h>
-#include <vector>
 
-#include "CStrArray.hpp"
-
-struct Process
-{
-	using MainFn = int (*)(int argc, char *argv[], char *envp[]);
-
-	static constexpr auto MAX_FDS{8};
-
-	std::shared_ptr<void> dlhandle;
-	int pid;
-	int ppid;
-	int pgid;
-	int fdtable[MAX_FDS];
-	int fdflags[MAX_FDS];
-	int fdstatus[MAX_FDS];
-	std::vector<cothread_t> threads;
-	CStrArray argv, envp;
-	MainFn entrypoint;
-	int exit_code;
-	int status;
-	std::array<struct sigaction, NSIG> signal_actions;
-	sigset_t signal_mask;
-	sigset_t pending_signals;
-	jmp_buf vfork_env, exit_env;
-	bool is_vfork_suspended = false;
-
-	constexpr Process()
-		: dlhandle(nullptr),
-		  pid(0),
-		  ppid(-1),
-		  pgid(0),
-		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
-		  fdflags{0, 0, 0, 0, 0, 0, 0, 0},
-		  fdstatus{0, 0, 0, 0, 0, 0, 0, 0},
-		  entrypoint(nullptr),
-		  exit_code(0),
-		  status(0)
-	{
-	}
-
-	constexpr ~Process() { cleanup(); }
-	bool all_threads_joined();
-	void cleanup();
-};
-
-constexpr bool operator==(const Process &a, const Process &b)
-{
-	return a.pid == b.pid;
-}
+#include "Process.hpp"
 
 Process &get_current_process();
 Process *get_process(pid_t pid);
@@ -70,3 +17,19 @@ struct nds_critical_section
 };
 
 void transfer_current_thread(Process &from, Process &to);
+bool kernelfd_in_use(int kfd);
+
+static constexpr bool is_valid_signal_number(const int sig)
+{
+	return sig > 0 && sig < NSIG;
+}
+
+static void queue_signal(Process &process, const int sig)
+{
+	sigaddset(&process.pending_signals, sig);
+}
+
+static constexpr pid_t normalize_process_group_id(pid_t pid, pid_t pgid)
+{
+	return (pgid == 0) ? pid : pgid;
+}

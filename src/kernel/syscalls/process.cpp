@@ -62,4 +62,34 @@ int tcsetpgrp(int fd, pid_t pgid)
 	// Lie and say we successfully assigned the foreground process group
 	return 0;
 }
+
+int setpgid(pid_t pid, pid_t pgid)
+{
+	auto &current = get_current_process();
+	if (pid == 0)
+		pid = current.pid;
+
+	auto *process = get_process(pid);
+	if (!process)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	if (pgid < 0)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+
+	const auto current_pid = current.pid;
+	if (process->pid != current_pid && process->ppid != current_pid)
+	{
+		errno = EPERM;
+		return -1;
+	}
+
+	process->pgid = normalize_process_group_id(process->pid, pgid);
+	return 0;
+}
 }

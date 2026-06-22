@@ -13,10 +13,10 @@
 
 int start_init()
 {
-	char *argv[] = {"dash_lib.dsl", nullptr};
-	char *envp[] = {"", nullptr};
+	char *argv[] = {(char *)"dash_lib.dsl", nullptr};
+	char *envp[] = {(char *)"", nullptr};
 
-	pid_t pid; 
+	pid_t pid;
 	if (posix_spawn(&pid, "dash_lib.dsl", {}, {}, argv, envp) == -1)
 	{
 		perror("posix_spawn");

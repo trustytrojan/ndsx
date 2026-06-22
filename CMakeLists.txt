@@ -37,17 +37,8 @@ set(SYMBOLS
 	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
 )
 
-add_executable(ndsx
-	src/kernel/main.cpp
-	src/kernel/process_manager.cpp
-	src/kernel/syscalls/fd.cpp
-	src/kernel/syscalls/process.cpp
-	src/kernel/syscalls/cothread.cpp
-	src/kernel/syscalls/misc.cpp
-	src/kernel/syscalls/execve.cpp
-	src/kernel/std_streams.c
-	src/kernel/syscalls/_exit.cpp
-)
+file(GLOB_RECURSE NDSX_SOURCES src/kernel/*.cpp)
+add_executable(ndsx ${NDSX_SOURCES})
 target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
 foreach(SYMBOL IN LISTS SYMBOLS)

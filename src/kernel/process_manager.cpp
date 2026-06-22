@@ -1,210 +1,26 @@
+#include "process_manager.hpp"
 #include "CStrArray.hpp"
-#include <algorithm>
-#include <csetjmp>
-// #include <format>
+
 #include <nds/cothread.h>
-#include <nds/interrupts.h>
-#include <process_manager.hpp>
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/wait.h>
 
-#include <errno.h>
-#include <fcntl.h>
+#include <algorithm>
+#include <csetjmp>
 #include <list>
-#include <sys/_wait.h>
-
-extern "C" typeof(close) libnds_close;
-
-void Process::cleanup()
-{
-	for (const auto kernel_fd : fdtable)
-	{
-		// We don't want to close libnds's standard streams! Close everything else, though.
-		if (kernel_fd > STDERR_FILENO && libnds_close(kernel_fd) == -1)
-			perror("libnds_close");
-	}
-	for (const auto t : threads)
-	{
-		// printf("kernel: deleting thread %d", t);
-
-		// The only possible errors are:
-		// - EPERM:  Deleting the current thread
-		// - EINVAL: Thread not in list
-		// Neither are fatal problems, so we can ignore.
-		// if (cothread_delete(t) == -1)
-		// perror("cothread_delete");
-	}
-}
-
-bool Process::all_threads_joined()
-{
-	for (const auto thread : threads)
-	{
-		if (thread <= 0)
-			continue;
-
-		errno = 0;
-		if (cothread_has_joined(thread))
-			continue;
-
-		// Detached threads are removed by libnds as soon as they finish.
-		if (errno == EINVAL)
-			continue;
-
-		return false;
-	}
-	return true;
-}
 
 static std::list<Process> processes{};
-static Process &kernel_process = processes.emplace_back();
-static int global_pid_counter = 0;
+static Process &kernel_process{processes.emplace_back()};
+static int global_pid_counter{};
 
-static constexpr bool is_valid_signal_number(const int sig)
+bool kernelfd_in_use(int kfd)
 {
-	return sig > 0 && sig < NSIG;
-}
-
-static constexpr bool is_unblockable_signal(const int sig)
-{
-	return sig == SIGKILL || sig == SIGSTOP;
-}
-
-static constexpr bool is_default_ignored_signal(const int sig)
-{
-	return sig == SIGCHLD;
-}
-
-static void sanitize_signal_mask(sigset_t &mask)
-{
-	// POSIX requires SIGKILL and SIGSTOP to be unblocked silently.
-	sigdelset(&mask, SIGKILL);
-	sigdelset(&mask, SIGSTOP);
-}
-
-static bool signal_is_blocked(const Process &process, const int sig)
-{
-	return sigismember(&process.signal_mask, sig) == 1;
-}
-
-static void queue_signal(Process &process, const int sig)
-{
-	sigaddset(&process.pending_signals, sig);
-}
-
-static struct sigaction default_sigaction()
-{
-	struct sigaction action{};
-	action.sa_handler = SIG_DFL;
-	sigemptyset(&action.sa_mask);
-	action.sa_flags = 0;
-	return action;
-}
-
-static struct sigaction get_installed_sigaction(Process &process, const int sig)
-{
-	auto action = process.signal_actions[sig];
-	if (action.sa_handler == nullptr)
-		action = default_sigaction();
-	return action;
-}
-
-static void set_default_sigaction(Process &process, const int sig)
-{
-	process.signal_actions[sig] = default_sigaction();
-}
-
-enum class SignalDeliveryResult
-{
-	None,
-	Caught,
-	Terminated,
-};
-
-static SignalDeliveryResult deliver_signal(Process &process, const int sig)
-{
-	sigdelset(&process.pending_signals, sig);
-	const auto action = get_installed_sigaction(process, sig);
-
-	if (action.sa_handler == SIG_IGN)
-		return SignalDeliveryResult::None;
-
-	if (action.sa_handler == SIG_DFL)
-	{
-		if (is_default_ignored_signal(sig))
-			return SignalDeliveryResult::None;
-
-		process.exit_code = 128 + sig;
-		process.status = sig & 0x7f;
-
-		for (const auto thread : process.threads)
-		{
-			if (thread == cothread_get_current())
-				continue;
-			cothread_delete(thread);
-		}
-
-		return SignalDeliveryResult::Terminated;
-	}
-
-	sigset_t old_mask = process.signal_mask;
-	sigset_t handler_mask = old_mask;
-
-	for (int blocked_sig = 1; blocked_sig < NSIG; ++blocked_sig)
-		if (sigismember(&action.sa_mask, blocked_sig) == 1)
-			sigaddset(&handler_mask, blocked_sig);
-
-	if ((action.sa_flags & SA_NODEFER) == 0)
-		sigaddset(&handler_mask, sig);
-
-	sanitize_signal_mask(handler_mask);
-	process.signal_mask = handler_mask;
-
-	if (action.sa_flags & SA_RESETHAND)
-		set_default_sigaction(process, sig);
-
-	if (action.sa_flags & SA_SIGINFO)
-		action.sa_sigaction(sig, nullptr, nullptr);
-	else
-		action.sa_handler(sig);
-
-	process.signal_mask = old_mask;
-	return SignalDeliveryResult::Caught;
-}
-
-bool deliver_pending_signals(Process &process, bool *caught_signal)
-{
-	if (caught_signal)
-		*caught_signal = false;
-
-	for (int sig = 1; sig < NSIG; ++sig)
-	{
-		if (sigismember(&process.pending_signals, sig) != 1)
-			continue;
-		if (signal_is_blocked(process, sig))
-			continue;
-
-		switch (deliver_signal(process, sig))
-		{
-		case SignalDeliveryResult::None:
-			continue;
-		case SignalDeliveryResult::Caught:
-			if (caught_signal)
-				*caught_signal = true;
-			return true;
-		case SignalDeliveryResult::Terminated:
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static constexpr pid_t normalize_process_group_id(pid_t pid, pid_t pgid)
-{
-	return (pgid == 0) ? pid : pgid;
+	return std::ranges::any_of(
+		processes, [=](const auto &p) { return std::ranges::any_of(p.fdtable, [=](auto fd) { return fd == kfd; }); });
 }
 
 void set_kernel_process()
@@ -240,7 +56,7 @@ Process *get_process_by_thread(cothread_t thread)
 
 auto get_process_itr(pid_t pid)
 {
-	return std::ranges::find_if(processes, [=](auto &p) { return p.pid == pid; });
+	return std::ranges::find_if(processes, [=](const auto &p) { return p.pid == pid; });
 }
 
 Process *get_process(pid_t pid)
@@ -400,6 +216,8 @@ int posix_spawn(
 	child.pgid = parent.pgid;
 	child.entrypoint = entrypoint;
 
+	const auto itr = get_process_itr(child.pid);
+
 	if (argv)
 	{
 		// child.argv.name = std::format("{},{}", child.pid, "argv");
@@ -409,7 +227,7 @@ int posix_spawn(
 		if (!child.argv.data)
 		{
 			errno = ENOMEM;
-			processes.erase(get_process_itr(child.pid));
+			processes.erase(itr);
 			return -1;
 		}
 		// printf("spawn: argv: %p\n", child.argv.data);
@@ -424,7 +242,7 @@ int posix_spawn(
 		if (!child.envp.data)
 		{
 			errno = ENOMEM;
-			processes.erase(get_process_itr(child.pid));
+			processes.erase(itr);
 			return -1;
 		}
 		// printf("spawn: envp: %p\n", child.envp.data);
@@ -442,7 +260,7 @@ int posix_spawn(
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
-		processes.erase(get_process_itr(child.pid));
+		processes.erase(itr);
 		return -1;
 	}
 	child.threads.assign({thread});
@@ -537,36 +355,6 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 	}
 }
 
-int setpgid(pid_t pid, pid_t pgid)
-{
-	auto &current = get_current_process();
-	if (pid == 0)
-		pid = current.pid;
-
-	auto *process = get_process(pid);
-	if (!process)
-	{
-		errno = ESRCH;
-		return -1;
-	}
-
-	if (pgid < 0)
-	{
-		errno = EINVAL;
-		return -1;
-	}
-
-	const auto current_pid = current.pid;
-	if (process->pid != current_pid && process->ppid != current_pid)
-	{
-		errno = EPERM;
-		return -1;
-	}
-
-	process->pgid = normalize_process_group_id(process->pid, pgid);
-	return 0;
-}
-
 int killpg(pid_t pgid, int sig)
 {
 	if (!is_valid_signal_number(sig))
@@ -605,56 +393,5 @@ int killpg(pid_t pgid, int sig)
 	deliver_pending_signals(current);
 
 	return 0;
-}
-
-int sigaction(int sig, const struct sigaction *act, struct sigaction *oact)
-{
-	if (!is_valid_signal_number(sig))
-	{
-		errno = EINVAL;
-		return -1;
-	}
-
-	auto &process = get_current_process();
-	if (oact)
-		*oact = get_installed_sigaction(process, sig);
-
-	if (!act)
-		return 0;
-
-	if (is_unblockable_signal(sig))
-	{
-		errno = EINVAL;
-		return -1;
-	}
-
-	process.signal_actions[sig] = *act;
-	sanitize_signal_mask(process.signal_actions[sig].sa_mask);
-	return 0;
-}
-
-int sigsuspend(const sigset_t *mask)
-{
-	auto &process = get_current_process();
-	const auto old_mask = process.signal_mask;
-
-	process.signal_mask = *mask;
-	sanitize_signal_mask(process.signal_mask);
-
-	for (;;)
-	{
-		bool caught = false;
-		if (deliver_pending_signals(process, &caught))
-		{
-			process.signal_mask = old_mask;
-			if (caught)
-			{
-				errno = EINTR;
-				return -1;
-			}
-		}
-
-		cothread_yield();
-	}
 }
 }
