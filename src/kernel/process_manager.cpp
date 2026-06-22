@@ -1,6 +1,7 @@
 #include "CStrArray.hpp"
 #include <algorithm>
 #include <csetjmp>
+#include <format>
 #include <nds/cothread.h>
 #include <nds/interrupts.h>
 #include <process_manager.hpp>
@@ -410,7 +411,8 @@ int posix_spawn(
 
 	if (argv)
 	{
-		child.argv = CStrArray(argv);
+		child.argv.name = std::format("{},{}", child.pid, "argv");
+		child.argv = CStrArray(argv, "tmp:" + std::format("{},{}", child.pid, "argv"));
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.argv.data)
 		{
@@ -418,12 +420,13 @@ int posix_spawn(
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
-		printf("spawn: argv: %p\n", child.argv.data);
+		// printf("spawn: argv: %p\n", child.argv.data);
 	}
 
 	if (envp)
 	{
-		child.envp = CStrArray(envp);
+		child.envp.name = std::format("{},{}", child.pid, "envp");
+		child.envp = CStrArray(envp, "tmp:" + std::format("{},{}", child.pid, "envp"));
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.envp.data)
 		{
@@ -431,7 +434,7 @@ int posix_spawn(
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
-		printf("spawn: envp: %p\n", child.envp.data);
+		// printf("spawn: envp: %p\n", child.envp.data);
 	}
 
 	child.fdtable[0] = 0;
@@ -441,7 +444,7 @@ int posix_spawn(
 	sigemptyset(&child.pending_signals);
 
 	// Attempt to create the process's first thread
-	const auto thread = cothread_create(process_start_trampoline, &child, 0, COTHREAD_DETACHED);
+	const auto thread = cothread_create(process_start_trampoline, &child, 8192, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create

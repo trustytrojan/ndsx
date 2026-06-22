@@ -1,3 +1,4 @@
+#include <format>
 #include <process_manager.hpp>
 
 #include <dlfcn.h>
@@ -63,7 +64,8 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 	// Remember, current IS the child that is going to start running a different program
 	if (argv)
 	{
-		current.argv = CStrArray(argv);
+		current.argv.name = std::format("{},{}", current.pid, "argv");
+		current.argv = CStrArray(argv, "tmp:" + std::format("{},{}", current.pid, "argv"));
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.argv.data)
 		{
@@ -74,20 +76,26 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 
 	if (envp)
 	{
-		current.envp = CStrArray(envp);
+		current.envp.name = std::format("{},{}", current.pid, "envp");
+		current.envp = CStrArray(envp, "tmp:" + std::format("{},{}", current.pid, "envp"));
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.envp.data)
 		{
 			errno = ENOMEM;
 			return -1;
 		}
+		// FIX: Update the global environ so transfer_current_thread
+		// saves the correct pointer later!
+		extern char **environ;
+		environ = current.envp.data;
+		puts("after envp assignment");
 	}
 
 	// before passing this thread back to the parent, spawn a new thread for the child
 	// that starts at the main() of a dsl.
 
 	// Remember, current IS the child that is going to start running a different program
-	const auto thread = cothread_create(process_start_trampoline, &current, 0, COTHREAD_DETACHED);
+	const auto thread = cothread_create(process_start_trampoline, &current, 8192, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
@@ -95,15 +103,14 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 	}
 	// printf("execve: new thread: %d\n", thread);
 
-	// POSIX wants all old process threads to die at this point.
-	// ALSO REMEMBER, we OVERRODE cothread_create() to ADD THE NEW THREAD TO the current process's threads.
-	for (const auto t : current.threads)
+	// Remove all threads that aren't the newly created one.
+	// Remember our cothread_create() override adds the thread to the current process.
+	for (auto it = current.threads.begin(); it != current.threads.end(); ++it)
 	{
-		if (t == thread)
+		if (*it == thread)
 			continue;
-		cothread_delete(t);
+		current.threads.erase(it);
 	}
-	current.threads.assign({thread});
 
 	// Close all FDs marked with FD_CLOEXEC
 	for (int i = 0; i < Process::MAX_FDS; ++i)
