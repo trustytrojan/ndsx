@@ -1,4 +1,4 @@
-#include <format>
+// #include <format>
 #include <process_manager.hpp>
 
 #include <dlfcn.h>
@@ -15,9 +15,17 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 	auto parent = get_process(current.ppid);
 	if (!parent)
 	{
-		// The only case in which this can happen is the kernel process itself calling _exit()...
-		puts("execve: current process has no parent");
-		libndsCrash("current process has no parent");
+		// The only case in which this can happen is the kernel process itself calling execve()...
+		puts("execve: called by pid 0\npress START to exit");
+		while (true)
+		{
+			scanKeys();
+			if (keysDown() & KEY_START)
+			{
+				typeof(_exit) libnds__exit;
+				libnds__exit(-1);
+			}
+		}
 	}
 
 	if (!parent->is_vfork_suspended)
@@ -64,8 +72,9 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 	// Remember, current IS the child that is going to start running a different program
 	if (argv)
 	{
-		current.argv.name = std::format("{},{}", current.pid, "argv");
-		current.argv = CStrArray(argv, "tmp:" + std::format("{},{}", current.pid, "argv"));
+		// current.argv.name = std::format("{},{}", current.pid, "argv");
+		// current.argv = CStrArray(argv, "tmp:" + std::format("{},{}", current.pid, "argv"));
+		current.argv = CStrArray(argv);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.argv.data)
 		{
@@ -76,8 +85,9 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 
 	if (envp)
 	{
-		current.envp.name = std::format("{},{}", current.pid, "envp");
-		current.envp = CStrArray(envp, "tmp:" + std::format("{},{}", current.pid, "envp"));
+		// current.envp.name = std::format("{},{}", current.pid, "envp");
+		// current.envp = CStrArray(envp, "tmp:" + std::format("{},{}", current.pid, "envp"));
+		current.envp = CStrArray(envp);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.envp.data)
 		{
@@ -88,56 +98,38 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 		// saves the correct pointer later!
 		extern char **environ;
 		environ = current.envp.data;
-		puts("after envp assignment");
 	}
 
-	// before passing this thread back to the parent, spawn a new thread for the child
+	// Before passing this thread back to the parent, spawn a new thread for the child
 	// that starts at the main() of a dsl.
 
-	// Remember, current IS the child that is going to start running a different program
-	const auto thread = cothread_create(process_start_trampoline, &current, 8192, COTHREAD_DETACHED);
+	// Remember, `current` is the child that is going to start running the loaded program.
+	// You definitely want a larger stack for complex programs, like a POSIX-compliant shell.
+	const auto thread = cothread_create(process_start_trampoline, &current, 4096, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
 		return -1;
 	}
-	// printf("execve: new thread: %d\n", thread);
 
 	// Remove all threads that aren't the newly created one.
 	// Remember our cothread_create() override adds the thread to the current process.
-	for (auto it = current.threads.begin(); it != current.threads.end(); ++it)
-	{
-		if (*it == thread)
-			continue;
-		current.threads.erase(it);
-	}
+	current.threads.assign({thread});
 
-	// Close all FDs marked with FD_CLOEXEC
+	// "Close" all FDs marked with FD_CLOEXEC. We do NOT want to close the actual resources
+	// with libnds_close() because they belong to the parent.
 	for (int i = 0; i < Process::MAX_FDS; ++i)
-	{
 		if (current.fdflags[i] & FD_CLOEXEC)
-		{
-			const auto kernel_fd = current.fdtable[i];
-			if (kernel_fd > STDERR_FILENO && libnds_close(kernel_fd) == -1)
-				perror("libnds_close");
 			current.fdtable[i] = -1;
-		}
-	}
 
-	{
+	{ // This NEEDS to be here, otherwise process bookkeeping breaks.
 		nds_critical_section cs;
 		transfer_current_thread(current, *parent);
+		// transfer_current_thread asserts that the current process is now *parent.
 	}
 
-	if (get_current_process() != *parent)
-	{
-		puts("execve: get_current_process() != *parent");
-		libndsCrash("execve: get_current_process() != *parent");
-	}
+	// puts("execve: about to longjmp");
 
-	puts("execve: about to longjmp");
-
-	// 4. Time travel! Warp the CPU back into the parent's vfork() call.
-	// We pass current.pid, which causes setjmp in vfork() to return the child's PID.
+	// Longjmp back to vfork() as the parent process.
 	longjmp(parent->vfork_env, current.pid);
 }

@@ -1,7 +1,7 @@
 #include "CStrArray.hpp"
 #include <algorithm>
 #include <csetjmp>
-#include <format>
+// #include <format>
 #include <nds/cothread.h>
 #include <nds/interrupts.h>
 #include <process_manager.hpp>
@@ -293,6 +293,8 @@ void transfer_current_thread(Process &from, Process &to)
 		from.threads.erase(it);
 	to.threads.emplace_back(current_thread);
 
+	assert(get_current_process() == to);
+
 	extern char **environ;
 	from.envp.data = environ;
 	environ = to.envp.data;
@@ -303,7 +305,6 @@ extern "C"
 {
 pid_t vfork()
 {
-	// Save the parent's state.
 	// setjmp returns 0 initially. When we longjmp back later, it will return the child PID.
 	pid_t ret = setjmp(get_current_process().vfork_env);
 
@@ -331,12 +332,7 @@ pid_t vfork()
 			parent.is_vfork_suspended = true;
 		}
 
-		// Sanity check
-		if (get_current_process() != child)
-		{
-			puts("vfork: get_current_process() != child");
-			libndsCrash("vfork: get_current_process() != child");
-		}
+		sassert(get_current_process() == child, "%d == %d", get_current_process().pid, child.pid);
 
 		// puts("vfork: returning 0");
 
@@ -345,18 +341,13 @@ pid_t vfork()
 	}
 	else
 	{
-		// The child has finished borrowing our thread.
+		// _exit() or execve() jumped here, and it has already called transfer_current_thread().
+		sassert(get_current_process() == parent, "%d == %d", get_current_process().pid, parent.pid);
+
+		// We just need to mark the parent as no longer suspended by vfork().
 		{
 			nds_critical_section cs;
-			transfer_current_thread(get_current_process(), parent);
 			parent.is_vfork_suspended = false;
-		}
-
-		// Sanity check
-		if (get_current_process() != parent)
-		{
-			puts("vfork: get_current_process() != parent");
-			libndsCrash("vfork: get_current_process() != parent");
 		}
 
 		// printf("vfork: returning %d\n", ret);
@@ -378,6 +369,7 @@ int posix_spawn(
 	(void)file_actions;
 	(void)attrp;
 
+	// TODO: replace with DSL caching system from nds-shell
 	const auto handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
 	if (!handle)
 	{
@@ -411,8 +403,9 @@ int posix_spawn(
 
 	if (argv)
 	{
-		child.argv.name = std::format("{},{}", child.pid, "argv");
-		child.argv = CStrArray(argv, "tmp:" + std::format("{},{}", child.pid, "argv"));
+		// child.argv.name = std::format("{},{}", child.pid, "argv");
+		// child.argv = CStrArray(argv, "tmp:" + std::format("{},{}", child.pid, "argv"));
+		child.argv = CStrArray(argv);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.argv.data)
 		{
@@ -425,8 +418,9 @@ int posix_spawn(
 
 	if (envp)
 	{
-		child.envp.name = std::format("{},{}", child.pid, "envp");
-		child.envp = CStrArray(envp, "tmp:" + std::format("{},{}", child.pid, "envp"));
+		// child.envp.name = std::format("{},{}", child.pid, "envp");
+		// child.envp = CStrArray(envp, "tmp:" + std::format("{},{}", child.pid, "envp"));
+		child.envp = CStrArray(envp);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.envp.data)
 		{
@@ -443,19 +437,16 @@ int posix_spawn(
 	sigemptyset(&child.signal_mask);
 	sigemptyset(&child.pending_signals);
 
-	// Attempt to create the process's first thread
-	const auto thread = cothread_create(process_start_trampoline, &child, 8192, COTHREAD_DETACHED);
+	// Create the child's first thread.
+	// You definitely want a larger stack for complex programs, like a POSIX-compliant shell.
+	const auto thread = cothread_create(process_start_trampoline, &child, 4096, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
 		processes.erase(get_process_itr(child.pid));
 		return -1;
 	}
-	child.threads.emplace_back(thread);
-
-	// Our `cothread_create` override always adds the new thread to the *current process*!
-	// Remove it as it actually belongs to the child process.
-	parent.threads.pop_back();
+	child.threads.assign({thread});
 
 	if (pid)
 		*pid = child.pid;
@@ -518,7 +509,7 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 			if (!p.all_threads_joined())
 				continue;
 
-			printf("waitpid: pid %d: all %d threads joined\n", p.pid, p.threads.size());
+			// printf("waitpid: pid %d: all %d threads joined\n", p.pid, p.threads.size());
 
 			const auto child_pid = p.pid;
 
@@ -526,16 +517,16 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 				*stat_loc = p.status;
 
 			// Consume the child's wait status (reap).
-			puts("waitpid: before processes.remove(p)");
+			// puts("waitpid: before processes.remove(p)");
 			processes.remove(p);
-			puts("waitpid: after processes.remove(p)");
+			// puts("waitpid: after processes.remove(p)");
 
 			return child_pid;
 		}
 
 		if (!has_matching_child)
 		{
-			puts("waitpid: !has_matching_child");
+			// puts("waitpid: !has_matching_child");
 			errno = ECHILD; // No children
 			return -1;
 		}

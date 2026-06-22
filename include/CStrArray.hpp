@@ -3,20 +3,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <string>
+// #include <string>
 #include <utility>
 
 struct CStrArray
 {
 	char **data{};
-	std::string name;
+	// std::string name;
 
 	constexpr CStrArray() = default;
 
 	// Deep copy from an existing null-terminated array
 	// If any allocation fails, `data` will be NULL.
-	constexpr explicit CStrArray(char *const *src, const std::string &name)
-		: name{name}
+	constexpr explicit CStrArray(char *const *src /*, const std::string &name*/)
+	// : name{name}
 	{
 		if (!src)
 			return;
@@ -47,7 +47,7 @@ struct CStrArray
 				count = 0;
 				return;
 			}
-		printf("C(%s): t=%p d=%p\n", name.c_str(), this, data);
+		// printf("C(%s): t=%p d=%p\n", name.c_str(), this, data);
 	}
 
 	// Count how many strings are in the array.
@@ -66,7 +66,7 @@ struct CStrArray
 	{
 		if (!data)
 			return;
-		printf("c(%s): t=%p d=%p\n", name.c_str(), this, data);
+		// printf("c(%s): t=%p d=%p\n", name.c_str(), this, data);
 		for (auto s{data}; *s; ++s)
 		{
 			// printf("CStrArray: freeing %p '%s'\n", *s, *s);
@@ -84,7 +84,7 @@ struct CStrArray
 	{
 		clear();
 		data = std::exchange(other.data, nullptr);
-		printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
+		// printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
 	}
 
 	// Move assignment
@@ -94,13 +94,13 @@ struct CStrArray
 		{
 			clear();
 			data = std::exchange(other.data, nullptr);
-			printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
+			// printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
 		}
 		return *this;
 	}
 
 	constexpr CStrArray(const CStrArray &other)
-		: CStrArray(other.data, other.name)
+		: CStrArray(other.data /*, other.name*/)
 	{
 	}
 
