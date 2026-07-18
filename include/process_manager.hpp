@@ -1,7 +1,6 @@
 #pragma once
 
 #include <nds.h>
-#include <pthread.h>
 #include <vector>
 
 #include "CStrArray.hpp"
