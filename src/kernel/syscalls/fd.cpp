@@ -15,14 +15,10 @@
 
 int ndsx_keyboardGetChar()
 {
-	static int shown = 0;
-	int c = -1;
-
-	if (shown == 0)
-	{
+	if (!keyboardIsVisible())
 		keyboardShow();
-		shown = 1;
-	}
+
+	int c = -1;
 
 	while (true)
 	{
@@ -30,15 +26,11 @@ int ndsx_keyboardGetChar()
 		c = keyboardUpdate();
 		if (c > 0)
 			break;
-		// cothread_yield_irq(IRQ_VBLANK);
 		cothread_yield();
 	}
 
 	if (c == '\n')
-	{
 		keyboardHide();
-		shown = 0;
-	}
 
 	return c;
 }
