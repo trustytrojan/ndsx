@@ -8,3 +8,4 @@ package-lock.json
 sdcard
 dynamic_libs
 .cmake_deps
+.direnv
