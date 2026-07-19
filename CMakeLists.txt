@@ -69,11 +69,19 @@ create_ndsx_program(argv-test src/programs/argv-test.cpp)
 create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)
 
 # 1. Define an IMPORTED static library target
-add_library(dash_lib STATIC IMPORTED GLOBAL)
+add_library(dash STATIC IMPORTED GLOBAL)
 
 # 2. Point CMake to the actual location of the pre-built static file
-set_target_properties(dash_lib PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libdash.a"
+set_target_properties(dash PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/libdash.a"
 )
 
-blocksds_create_dsl(dash_lib MAIN_TARGET ndsx IGNORE_UNRESOLVED_SYMBOLS)
+blocksds_create_dsl(dash MAIN_TARGET ndsx IGNORE_UNRESOLVED_SYMBOLS)
+add_custom_command(
+	OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
+	COMMAND ${CMAKE_COMMAND} -E create_symlink
+		"${CMAKE_BINARY_DIR}/dash.dsl"
+		"${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
+)
+add_custom_target(link_dash_into_sdcard ALL
+	DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl")

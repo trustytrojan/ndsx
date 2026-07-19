@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/_default_fcntl.h>
 
 // File descriptor system calls.
 #include <array>
@@ -468,6 +469,8 @@ int dup2(int oldfd, int newfd)
 
 int fcntl(int fildes, int cmd, ...)
 {
+	extern int (*stdin_fn_fcntl)(int, int, va_list);
+
 	if (fildes < 0 || fildes >= Process::MAX_FDS)
 	{
 		errno = EBADF;
@@ -484,89 +487,14 @@ int fcntl(int fildes, int cmd, ...)
 
 	va_list ap;
 	va_start(ap, cmd);
-	int ret = -1;
 
-	switch (cmd)
-	{
-	case F_GETFD:
-		ret = p.fdflags[fildes];
-		break;
-
-	case F_SETFD:
-	{
-		const int flags = va_arg(ap, int);
-		// Only support FD_CLOEXEC for now
-		p.fdflags[fildes] = flags & FD_CLOEXEC;
-		ret = 0;
-		break;
-	}
-
-	case F_GETFL:
-	case F_SETFL:
-	case F_GETOWN:
-	case F_SETOWN:
-	{
-		if (cmd == F_GETFL)
-		{
-			ret = p.fdstatus[fildes];
-		}
-		else if (cmd == F_SETFL)
-		{
-			const int arg = va_arg(ap, int);
-			// Support O_NONBLOCK in user-visible status flags
-			if (arg & O_NONBLOCK)
-				p.fdstatus[fildes] |= O_NONBLOCK;
-			else
-				p.fdstatus[fildes] &= ~O_NONBLOCK;
-			ret = 0;
-		}
-		else if (cmd == F_SETOWN)
-		{
-			const int arg = va_arg(ap, int);
-			(void)arg;
-			ret = 0;
-		}
-		else /* F_GETOWN */
-		{
-			ret = 0;
-		}
-		break;
-	}
-
-	case F_GETLK:
-	case F_SETLK:
-	case F_SETLKW:
-	{
-		struct flock *fl = va_arg(ap, struct flock *);
-		if (!fl)
-		{
-			errno = EFAULT;
-			ret = -1;
-			break;
-		}
-
-		if (cmd == F_GETLK)
-		{
-			// No locking implemented: report unlocked
-			fl->l_type = F_UNLCK;
-			ret = 0;
-		}
-		else
-		{
-			// Pretend to succeed (no real locking)
-			ret = 0;
-		}
-		break;
-	}
-
-	default:
-		errno = EINVAL;
-		ret = -1;
-		break;
-	}
+	if (kernel_fd == STDIN_FILENO && stdin_fn_fcntl)
+		return stdin_fn_fcntl(fildes, cmd, ap);
 
 	va_end(ap);
-	return ret;
+
+	errno = EINVAL;
+	return -1;
 }
 
 int pipe(int fildes[2])

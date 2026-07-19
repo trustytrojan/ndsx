@@ -10,6 +10,7 @@ close libnds_close
 read libnds_read
 write libnds_write
 lseek libnds_lseek
+fcntl libnds_fcntl
 # these renames force the linker to pull in picolibc's stdio streams instead, giving us nice buffered I/O
 stdin libnds_stdin
 stdout libnds_stdout

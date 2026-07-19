@@ -3,6 +3,7 @@
 
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <sys/_default_fcntl.h>
 
 int process_start_trampoline(void *arg);
 extern "C" typeof(close) libnds_close;
