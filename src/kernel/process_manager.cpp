@@ -6,12 +6,11 @@
 #include <spawn.h>
 
 #include <cerrno>
+#include <iostream>
 #include <list>
 
 constexpr Process::~Process()
 {
-	if (dlhandle && dlclose(dlhandle) < 0)
-		printf("kernel: dlclose: %s\n", dlerror());
 	for (const auto fd : fdtable)
 	{
 		// We don't want to close libnds's standard streams! Close everything else, though.
@@ -122,26 +121,25 @@ extern "C" int posix_spawn(
 	(void)file_actions;
 	(void)attrp;
 
-	const auto handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-	if (!handle)
+	auto dlhandle = DylibManager::open_lib(path);
+	if (!dlhandle)
 	{
-		printf("kernel: dlopen: %s\n", dlerror());
+		std::cerr << "posix_spawn: open_lib: " << dlhandle.error() << '\n';
 		errno = ENOEXEC;
 		return -1;
 	}
 
-	const auto entrypoint = (Process::MainFn)dlsym(handle, "main");
+	const auto entrypoint = (Process::MainFn)dlsym(dlhandle->get(), "main");
 	if (!entrypoint)
 	{
-		printf("dlsym: %s\n", dlerror());
-		dlclose(handle);
+		std::cerr << "posix_spawn: dlsym: " << dlerror() << '\n';
 		errno = ENOEXEC;
 		return -1;
 	}
 
 	// Create the process object first, then create the thread with a stable address.
 	auto &child = processes.emplace_back();
-	child.dlhandle = handle;
+	child.dlhandle = std::move(*dlhandle);
 	child.pid = ++global_pid_counter;
 	child.ppid = parent.pid;
 	child.entrypoint = entrypoint;
@@ -153,7 +151,6 @@ extern "C" int posix_spawn(
 		if (!child.argv.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
@@ -166,7 +163,6 @@ extern "C" int posix_spawn(
 		if (!child.envp.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
 			processes.erase(get_process_itr(child.pid));
 			return -1;
 		}
@@ -176,12 +172,15 @@ extern "C" int posix_spawn(
 	child.fdtable[1] = 1;
 	child.fdtable[2] = 2;
 
-	// Attempt to create the process's first thread
-	const auto thread = cothread_create(process_start_trampoline, &child, 0, COTHREAD_DETACHED);
+	// Create the child's first thread. It will get 8 KB of stack memory.
+	// libnds's default is 1 KB, which is fine *except* when the thread calls posix_spawn()
+	// with the new dynamic loader. It needs a bit more than 1 KB of stack memory.
+	// Plus, OS kernels conventionally give a process's first/main thread more stack compared
+	// to the default stack size of non-main threads.
+	const auto thread = cothread_create(process_start_trampoline, &child, 8192, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
-		dlclose(handle);
 		processes.erase(get_process_itr(child.pid));
 		return -1;
 	}

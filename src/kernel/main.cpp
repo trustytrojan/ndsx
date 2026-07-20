@@ -16,7 +16,7 @@ int start_init()
 	pid_t pid;
 	if (posix_spawn(&pid, "init_process.dsl", {}, {}, {}, {}) == -1)
 	{
-		puts("failed to spawn init! crashing");
+		puts("start_init: failed to spawn init! crashing");
 		return -67;
 	}
 
@@ -24,11 +24,9 @@ int start_init()
 	const auto rc = waitpid(pid, &status, 0);
 	if (rc == -1)
 	{
-		perror("waitpid");
+		perror("start_init: waitpid");
 		return -67;
 	}
-
-	// printf("kernel: after init waitpid()\n");
 
 	if (rc != pid)
 	{
@@ -94,7 +92,8 @@ int main()
 	init_console();
 	set_kernel_process();
 #ifdef DSL_SYMBOL_UNRESOLVED
-	dsl_set_symbol_resolver(my_sym_resolver);
+	bool dep_symbol_resolver(const char *const name, uint32_t *const value, const uint32_t attributes);
+	dsl_set_symbol_resolver(dep_symbol_resolver);
 #endif
 
 	printf("ndsx 0.0.1\n\n");
