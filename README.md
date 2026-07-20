@@ -1,4 +1,7 @@
 # ndsx
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/trustytrojan/ndsx)
+
 An attempt at a POSIX-compliant microkernel for the Nintendo DS, built on top of [BlocksDS](https://blocksds.skylyrac.net/). Currently in its early stages, and playing around with the many possibilities this could have. This is also my first attempt at writing an OS kernel of any kind.
 
 ## Impossibilities
