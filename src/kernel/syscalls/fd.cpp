@@ -4,36 +4,11 @@
 #include <cerrno>
 #include <cstdarg>
 #include <cstring>
+
 #include <fcntl.h>
 #include <sys/_default_fcntl.h>
 
 // File descriptor system calls.
-#include <array>
-#include <cstring>
-
-// File descriptor system calls.
-
-int ndsx_keyboardGetChar()
-{
-	if (!keyboardIsVisible())
-		keyboardShow();
-
-	int c = -1;
-
-	while (true)
-	{
-		scanKeys();
-		c = keyboardUpdate();
-		if (c > 0)
-			break;
-		cothread_yield();
-	}
-
-	if (c == '\n')
-		keyboardHide();
-
-	return c;
-}
 
 extern "C"
 {
@@ -194,26 +169,6 @@ ssize_t read(int fd, void *ptr, size_t len)
 	{
 		errno = EBADF;
 		return -1;
-	}
-
-	if (kernel_fd == STDIN_FILENO)
-	{
-		// we can simply handle this here instead of requiring it from libnds
-		char *cp = (char *)ptr;
-		const char *const end = (char *)ptr + len;
-		for (; cp <= end; ++cp)
-		{
-			const char c = ndsx_keyboardGetChar();
-			if (c <= 0)
-				// keyboard uninitialized, or other problem
-				break;
-			*cp = c;
-
-			// echo the characters for now. later on we can implement the termios API.
-			extern ConsoleOutFn libnds_stdout_write, libnds_stderr_write;
-			libnds_stdout_write(&c, 1);
-		}
-		return cp - (char *)ptr;
 	}
 
 	// pipe read

@@ -67,6 +67,7 @@ create_ndsx_program(my_prog src/programs/my_prog.cpp)
 create_ndsx_program(env-test src/programs/env-test.cpp)
 create_ndsx_program(argv-test src/programs/argv-test.cpp)
 create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)
+create_ndsx_program(arrow-keys src/programs/arrow-keys.cpp)
 
 # 1. Define an IMPORTED static library target
 add_library(dash STATIC IMPORTED GLOBAL)

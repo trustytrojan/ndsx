@@ -63,7 +63,61 @@ void init_console()
 	static PrintConsole console;
 	consoleInit(&console, layer, type, size, mapBase, tileBase, true, true);
 
-	keyboardDemoInit()->scrollSpeed = 0;
+	const auto kb = keyboardDemoInit();
+	kb->scrollSpeed = 0;
+
+	// Echo all keypresses as if tcsetattr() was called with termios.c_lflags & ECHO
+	kb->OnKeyPressed = [](const auto kc)
+	{
+		const auto consolePrintStr = [](const std::string_view s)
+		{
+			for (const auto c : s)
+			{
+				if (!c)
+					break;
+				consolePrintChar(c);
+			}
+		};
+
+		switch (kc)
+		{
+			// clang-format off
+		case DVK_FOLD:  consolePrintStr("^["); break;
+		case DVK_UP:    consolePrintStr("^[[A"); break;
+		case DVK_DOWN:  consolePrintStr("^[[B"); break;
+		case DVK_RIGHT: consolePrintStr("^[[C"); break;
+		case DVK_LEFT:  consolePrintStr("^[[D"); break;
+		default: if (kc > 0) consolePrintChar(kc); break;
+			// clang-format on
+		}
+	};
+
+	// Emulate ANSI escape sequences for arrow/Esc keys
+	kb->OnKeyPutc = [](const int kc)
+	{
+		const auto keyboardFifoPuts = [](const std::string_view s)
+		{
+			for (const auto c : s)
+			{
+				if (!c)
+					break;
+				keyboardFifoPutc(c);
+			}
+		};
+
+		switch (kc)
+		{
+			// clang-format off
+		case DVK_FOLD:  keyboardFifoPutc('\e'); break;
+		case DVK_UP:    keyboardFifoPuts("\e[A"); break;
+		case DVK_DOWN:  keyboardFifoPuts("\e[B"); break;
+		case DVK_RIGHT: keyboardFifoPuts("\e[C"); break;
+		case DVK_LEFT:  keyboardFifoPuts("\e[D"); break;
+		default: if (kc > 0) keyboardFifoPutc(kc); break;
+			// clang-format on
+		}
+	};
+
 	keyboardShow();
 }
 

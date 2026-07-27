@@ -1,2 +1,5 @@
+save this for later:
 https://deepwiki.com/search/how-does-dsltool-lay-out-the-s_a79203bf-0d89-4bbb-843e-078e7895be36?mode=fast
 https://deepwiki.com/search/in-dlfcnc-the-dlopenfile-funct_d2b87cf1-b059-4186-a742-fd1325a7bff5?mode=fast
+
+instead, clean up the slop pipe implementation by making it a libnds i/o device.
