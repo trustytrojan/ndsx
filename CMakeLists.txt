@@ -79,11 +79,13 @@ set_target_properties(dash PROPERTIES
 )
 
 blocksds_create_dsl(dash MAIN_TARGET ndsx IGNORE_UNRESOLVED_SYMBOLS)
-add_custom_command(
-	OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
-	COMMAND ${CMAKE_COMMAND} -E create_symlink
-		"${CMAKE_BINARY_DIR}/dash.dsl"
-		"${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
-)
-add_custom_target(link_dash_into_sdcard ALL
-	DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl")
+if(NOT "$ENV{CI}")
+	add_custom_command(
+		OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
+		COMMAND ${CMAKE_COMMAND} -E create_symlink
+			"${CMAKE_BINARY_DIR}/dash.dsl"
+			"${CMAKE_SOURCE_DIR}/sdcard/dash.dsl"
+	)
+	add_custom_target(link_dash_into_sdcard ALL
+		DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/dash.dsl")
+endif()
