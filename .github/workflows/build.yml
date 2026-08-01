@@ -17,10 +17,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build & install libnds fork
+        run: |
+          git clone https://codeberg.org/trustytrojan/libnds -b canonical-mode --depth 1
+          cd libnds
+          make install -j
+
+      - name: Build nds-dash
+        run: |
+          cd ..
+          git clone https://github.com/trustytrojan/nds-dash --depth 1
+          cd nds-dash
+          ./configure.sh
+          make -j
+          cp src/libdash.a .
+
       - name: Install CMake
         run: |
           which cmake && exit 0
-          set -e
           apt-get update
           apt-get install -y --no-install-recommends cmake
           which cmake
