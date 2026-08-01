@@ -22,7 +22,7 @@ jobs:
           git clone https://codeberg.org/trustytrojan/libnds --branch canonical-mode --depth 1
           cd libnds
           git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
-          make install -j
+          make install -j INSTALLDIR=$WONDERFUL_TOOLCHAIN/thirdparty/blocksds/core/libs/libnds
 
       - name: Install Autotools
         run: |
