@@ -24,6 +24,11 @@ jobs:
           git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
           make install -j
 
+      - name: Install Autotools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends autoconf automake libtool
+
       - name: Build nds-dash
         run: |
           cd ..
