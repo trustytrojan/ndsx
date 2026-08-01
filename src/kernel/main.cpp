@@ -113,9 +113,12 @@ void init_console()
 		case DVK_DOWN:  keyboardFifoPuts("\e[B"); break;
 		case DVK_RIGHT: keyboardFifoPuts("\e[C"); break;
 		case DVK_LEFT:  keyboardFifoPuts("\e[D"); break;
-		default: if (kc > 0) keyboardFifoPutc(kc); break;
 			// clang-format on
 		}
+
+		// Tell libnds to continue its normal behavior of keyboardFifoUpdate().
+		// That way, we don't have to manually handle backspace or other keys.
+		return true;
 	};
 
 	keyboardShow();

@@ -31,7 +31,7 @@ set_target_properties(nds9-prefixed PROPERTIES
 set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--end-group")
 
 set(SYMBOLS
-	gettimeofday fputs getpid getppid setenv unsetenv libnds_close
+	gettimeofday fputs getpid getppid setenv unsetenv libnds_close keyboardSetCanonicalMode
 
 	# dash symbols
 	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
@@ -68,6 +68,7 @@ create_ndsx_program(env-test src/programs/env-test.cpp)
 create_ndsx_program(argv-test src/programs/argv-test.cpp)
 create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)
 create_ndsx_program(arrow-keys src/programs/arrow-keys.cpp)
+create_ndsx_program(canonical-mode-test src/programs/canonical-mode-test.cpp)
 
 # 1. Define an IMPORTED static library target
 add_library(dash STATIC IMPORTED GLOBAL)
