@@ -20,8 +20,8 @@ jobs:
       - name: Build & install libnds fork
         run: |
           git clone https://codeberg.org/trustytrojan/libnds --branch canonical-mode --depth 1
-          git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
           cd libnds
+          git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
           make install -j
 
       - name: Build nds-dash
