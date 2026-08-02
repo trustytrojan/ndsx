@@ -9,7 +9,7 @@ with positional fields in a braced initializer, which C++ doesn't like.
 */
 
 // A 1-character buffer make a stream essentially unbuffered.
-// This is also what `setvbuf(_IONBF)` does.
+// This is also what `setvbuf(_IONBF)` does in picolibc.
 static char __stdin_buf[1], __stdout_buf[1], __stderr_buf[1];
 
 static struct __file_bufio __stdin = FDEV_SETUP_POSIX(0, __stdin_buf, sizeof(__stdin_buf), __SRD, 0),

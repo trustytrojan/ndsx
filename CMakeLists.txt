@@ -35,15 +35,18 @@ set(SYMBOLS
 
 	# dash symbols
 	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
+
+	# busybox symbols
+	.LC0 .LC1 .LC108 .LC130 .LC132 .LC60 .LC7 __bswapdi2 __bswapsi2 access alarm bind chmod chown chroot connect endgrent execv execvp fchdir fgets fileno fnmatch freeaddrinfo freopen getaddrinfo getgrgid getgrnam gethostbyname getline getnameinfo getopt getpeername getpwnam getpwuid getrlimit getsockname glob globfree h_errno hstrerror inet_aton inet_ntoa initgroups ioctl lchown link listen mallopt memchr mkdir mknod mkstemp mmap nanosleep optarg opterr optind optopt poll ppoll rand readlink realpath regcomp regexec regfree rename rmdir sched_getaffinity sendto setegid seteuid setgid setpgrp setrlimit setsid setsockopt settimeofday setuid sleep snprintf socket sprintf srand stdin strftime strncasecmp strndup strrchr strtoll strtoull symlink tcflush tcsetattr ttyname_r uname unlink utimes vasprintf wait
 )
 
 file(GLOB_RECURSE NDSX_SOURCES src/kernel/*.cpp)
 add_executable(ndsx ${NDSX_SOURCES})
 target_include_directories(ndsx PRIVATE include)
-target_link_libraries(ndsx PRIVATE nds9-prefixed)
+target_link_libraries(ndsx PRIVATE nds9-prefixed dswifi9)
 foreach(SYMBOL IN LISTS SYMBOLS)
 	# Force this symbol to be included in the binary
-	target_link_options(ndsx PRIVATE -Wl,--undefined=${SYMBOL})
+	target_link_options(ndsx PRIVATE "-Wl,--undefined=${SYMBOL}")
 endforeach()
 nds_create_rom(ndsx)
 
@@ -82,3 +85,7 @@ create_ndsx_program_from_sources(canonical-mode-test src/programs/canonical-mode
 add_library(dash STATIC IMPORTED GLOBAL)
 set_target_properties(dash PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/src/libdash.a")
 create_ndsx_program_from_library(dash IGNORE_UNRESOLVED_SYMBOLS)
+
+add_library(busybox STATIC IMPORTED GLOBAL)
+set_target_properties(busybox PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../busybox/libbusybox.a")
+create_ndsx_program_from_library(busybox IGNORE_UNRESOLVED_SYMBOLS)

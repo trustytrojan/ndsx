@@ -24,6 +24,11 @@ pid_t getpgrp()
 	return get_current_process().pgid;
 }
 
+int setpgrp(void)
+{
+	return setpgid(0, 0);
+}
+
 pid_t wait(int *stat_loc)
 {
 	return waitpid(-1, stat_loc, 0);

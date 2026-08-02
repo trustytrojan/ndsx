@@ -255,7 +255,9 @@ int posix_spawn(
 	sigemptyset(&child.pending_signals);
 
 	// Create the child's first thread.
-	// You definitely want a larger stack for complex programs, like a POSIX-compliant shell.
+	// You definitely want a larger stack for complex programs, like shells.
+	// It might be a good idea to follow the traditional kernel pattern of giving
+	// the main thread of a process more stack memory than its child threads.
 	const auto thread = cothread_create(process_start_trampoline, &child, 4096, COTHREAD_DETACHED);
 	if (thread < 0)
 	{

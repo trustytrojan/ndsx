@@ -106,6 +106,9 @@ static SignalDeliveryResult deliver_signal(Process &process, const int sig)
 
 bool deliver_pending_signals(Process &process, bool *caught_signal)
 {
+	// Check if alarm timer has fired before processing signals
+	process.check_alarm();
+
 	if (caught_signal)
 		*caught_signal = false;
 
@@ -183,5 +186,47 @@ int sigsuspend(const sigset_t *mask)
 
 		cothread_yield();
 	}
+}
+
+extern "C" unsigned int alarm(unsigned int seconds)
+{
+	auto &process = get_current_process();
+	uint64_t now = systemCounterGetTicks();
+	unsigned int remaining_sec = 0;
+
+	// 1. Calculate remaining seconds on previous alarm (if active)
+	if (process.alarm_active)
+	{
+		if (now < process.alarm_target_ticks)
+		{
+			uint64_t remaining_ticks = process.alarm_target_ticks - now;
+			uint32_t remaining_usecs = systemCounterTicksToUsec(remaining_ticks);
+			remaining_sec = remaining_usecs / 1000000UL;
+
+			// POSIX requirement: If time remaining is non-zero but < 1 second, round up to 1
+			if (remaining_sec == 0 && remaining_ticks > 0)
+				remaining_sec = 1;
+		}
+		else
+		{
+			// The previous alarm already expired, queue SIGALRM
+			sigaddset(&process.pending_signals, SIGALRM);
+		}
+	}
+
+	// 2. Set new alarm or cancel
+	if (seconds == 0)
+	{
+		process.alarm_active = false;
+		process.alarm_target_ticks = 0;
+	}
+	else
+	{
+		process.alarm_active = true;
+		uint64_t delay_ticks = systemCounterUsecsToTicks((uint64_t)seconds * 1000000ULL);
+		process.alarm_target_ticks = now + delay_ticks;
+	}
+
+	return remaining_sec;
 }
 }

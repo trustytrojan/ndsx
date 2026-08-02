@@ -13,11 +13,11 @@
 
 int start_init()
 {
-	char *argv[] = {(char *)"dash.dsl", nullptr};
+	char *argv[] = {(char *)"busybox.dsl", (char *)"hush", nullptr};
 	char *envp[] = {(char *)"", nullptr};
 
 	pid_t pid;
-	if (posix_spawn(&pid, "dash.dsl", {}, {}, argv, envp) == -1)
+	if (posix_spawn(&pid, "busybox.dsl", {}, {}, argv, envp) == -1)
 	{
 		perror("posix_spawn");
 		return -67;
@@ -134,7 +134,8 @@ bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32
 		return false;
 	}
 
-	if (!(attributes & DSL_SYMBOL_UNRESOLVED) || !*name)
+	// Ignore empty names and local read-only data symbols (GCC quirk)
+	if (!(attributes & DSL_SYMBOL_UNRESOLVED) || !*name || strstr(name, ".LC"))
 		return true;
 
 	fprintf(stderr, "kernel: failed to resolve symbol: '%s'\n", name);

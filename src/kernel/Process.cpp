@@ -40,3 +40,19 @@ bool Process::all_threads_joined()
 				   errno == EINVAL; // Detached threads are deleted by libnds as soon as they finish.
 		});
 }
+
+void Process::check_alarm()
+{
+	if (!alarm_active)
+		return;
+
+	uint64_t now = systemCounterGetTicks();
+	if (now >= alarm_target_ticks)
+	{
+		alarm_active = false;
+		alarm_target_ticks = 0;
+
+		// Queue SIGALRM to the process
+		sigaddset(&pending_signals, SIGALRM);
+	}
+}

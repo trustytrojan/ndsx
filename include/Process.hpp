@@ -33,6 +33,9 @@ struct Process
 	jmp_buf vfork_env, exit_env;
 	bool is_vfork_suspended = false;
 
+	uint64_t alarm_target_ticks{0}; // 0 means no active alarm
+    bool alarm_active{false};
+
 	constexpr Process()
 		: dlhandle(nullptr),
 		  pid(0),
@@ -50,6 +53,7 @@ struct Process
 	constexpr ~Process() { cleanup(); }
 	bool all_threads_joined();
 	void cleanup();
+	void check_alarm();
 };
 
 constexpr bool operator==(const Process &a, const Process &b)
