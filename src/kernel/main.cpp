@@ -134,8 +134,8 @@ bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32
 		return false;
 	}
 
-	// Ignore empty names and local read-only data symbols (GCC quirk)
-	if (!(attributes & DSL_SYMBOL_UNRESOLVED) || !*name || strstr(name, ".LC"))
+	// Not unresolved, we can return true.
+	if (!(attributes & DSL_SYMBOL_UNRESOLVED))
 		return true;
 
 	fprintf(stderr, "kernel: failed to resolve symbol: '%s'\n", name);

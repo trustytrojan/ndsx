@@ -29,7 +29,7 @@ void cothread_yield(void)
 		else
 		{
 			// There is a bug in process-thread bookkeeping!
-			fputs("kernel: no process for next thread! crashing\n", stderr);
+			puts("kernel: no process for next thread! crashing");
 			libndsCrash("no process for next thread");
 		}
 		// putchar('\n');

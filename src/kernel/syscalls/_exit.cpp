@@ -46,6 +46,6 @@ extern "C" void _exit(int status)
 	}
 
 	// Execution should never reach here. If it does, you really screwed up the memory.
-	printf("_exit is returning");
+	puts("_exit is returning");
 	libndsCrash("_exit is returning");
 }
