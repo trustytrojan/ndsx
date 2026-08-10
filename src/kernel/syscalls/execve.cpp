@@ -73,8 +73,6 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 	// Remember, current IS the child that is going to start running a different program
 	if (argv)
 	{
-		// current.argv.name = std::format("{},{}", current.pid, "argv");
-		// current.argv = CStrArray(argv, "tmp:" + std::format("{},{}", current.pid, "argv"));
 		current.argv = CStrArray(argv);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.argv.data)
@@ -86,8 +84,6 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 
 	if (envp)
 	{
-		// current.envp.name = std::format("{},{}", current.pid, "envp");
-		// current.envp = CStrArray(envp, "tmp:" + std::format("{},{}", current.pid, "envp"));
 		current.envp = CStrArray(envp);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!current.envp.data)
@@ -129,7 +125,7 @@ extern "C" int execve(const char *path, char *const argv[], char *const envp[])
 		// transfer_current_thread asserts that the current process is now *parent.
 	}
 
-	// puts("execve: about to longjmp");
+	puts("execve: about to longjmp");
 
 	// Longjmp back to vfork() as the parent process.
 	longjmp(parent->vfork_env, current.pid);

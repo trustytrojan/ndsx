@@ -69,24 +69,15 @@ int process_start_trampoline(void *arg)
 {
 	extern char **environ;
 	auto &p = *(Process *)arg;
-	// printf("process_start_trampoline: p=%d t=%d\n", get_current_process().pid, cothread_get_current());
 
-	// FIX: Claim the environment immediately upon thread entry!
-	// We must overwrite whatever the previous thread left in the global variable
-	// before any yielding or heap allocations can occur.
+	// Restore `environ` in the same way our cothread_yield() override does.
 	environ = p.envp.data;
 
 	const auto status = setjmp(p.exit_env);
 	if (status == 0)
-	{
 		p.exit_code = p.entrypoint(p.argv.count(), p.argv.data, p.envp.data);
-		// puts("process_start_trampoline: returned from main()");
-	}
 	else
-	{
-		// puts("process_start_trampoline: _exit() called");
 		p.exit_code = status;
-	}
 
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
 	p.status = (p.exit_code << 8) | 0x00;
@@ -95,8 +86,13 @@ int process_start_trampoline(void *arg)
 	// if it was realloc'd via setenv(). See the end of cothread_yield() for more info.
 	p.envp.data = environ;
 
-	// printf(
-	// 	"process_start_trampoline: p=%d t=%d ec=%d\n", get_current_process().pid, cothread_get_current(), p.exit_code);
+	/* Save this for when you wrap the cothread_(yield|send)_signal functions.
+	// Wake up any threads stuck inside waitpid()
+	cothread_send_signal(p.pid);
+	// Set bit 30 because we need to wake up a waitpid(<=0) call instead of a waitpid(>0) call.
+	cothread_send_signal(BIT(30) | p.ppid);
+	*/
+
 	return p.exit_code;
 }
 
@@ -118,14 +114,34 @@ void transfer_current_thread(Process &from, Process &to)
 // Syscalls that need to modify process state are below; others are in src/kernel/syscalls/process.cpp.
 extern "C"
 {
+// extern "C" __attribute__((naked)) pid_t vfork()
+// {
+// 	asm volatile(
+// 		"push {r4, lr}\n\t"	  // Save main's return address and align stack to 8 bytes
+// 		"bl   vfork_impl\n\t" // Call your C++ function
+// 		"pop  {r4, pc}\n\t"	  // Unwind frame and return to main() with r0 intact
+// 	);
+// }
+
 pid_t vfork()
 {
+	static thread_local void *return_addr;
+
+	// Save return address to parent's vfork() call, otherwise, on the 2nd return,
+	// execution will end up where the child called _exit() or execve().
+	return_addr = __builtin_return_address(0);
+
 	// setjmp returns 0 initially. When we longjmp back later, it will return the child PID.
 	pid_t ret = setjmp(get_current_process().vfork_env);
 
+	// You might be thinking: wouldn't this become the child when longjmp() jumps here?
+	// No, it won't, because _exit() and execve() will transfer the thread back to the
+	// parent before calling longjmp().
 	auto &parent = get_current_process();
 
-	// printf("vfork: setjmp: %d\n", ret);
+	printf("vfork: setjmp: %d\n", ret);
+	printf("vfork: parent: %p\n", &parent);
+	printf("vfork: parent pid: %d\n", parent.pid);
 
 	if (ret == 0)
 	{
@@ -149,14 +165,14 @@ pid_t vfork()
 
 		sassert(get_current_process() == child, "%d == %d", get_current_process().pid, child.pid);
 
-		// puts("vfork: returning 0");
+		puts("vfork: returning 0");
 
 		// return 0 to the new child process
 		return 0;
 	}
 	else
 	{
-		// _exit() or execve() jumped here, and it has already called transfer_current_thread().
+		// _exit() or execve() jumped here, so it has already called transfer_current_thread().
 		sassert(get_current_process() == parent, "%d == %d", get_current_process().pid, parent.pid);
 
 		// We just need to mark the parent as no longer suspended by vfork().
@@ -165,9 +181,12 @@ pid_t vfork()
 			parent.is_vfork_suspended = false;
 		}
 
-		// printf("vfork: returning %d\n", ret);
+		printf("vfork: returning %d\n", ret);
 
-		// return the child PID to the parent
+		// Restore return address to parent's vfork() call, otherwise execution
+		// will end up where the child called _exit() or execve().
+		__builtin_eh_return(0, return_addr);
+
 		return ret;
 	}
 }
@@ -220,8 +239,6 @@ int posix_spawn(
 
 	if (argv)
 	{
-		// child.argv.name = std::format("{},{}", child.pid, "argv");
-		// child.argv = CStrArray(argv, "tmp:" + std::format("{},{}", child.pid, "argv"));
 		child.argv = CStrArray(argv);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.argv.data)
@@ -230,13 +247,10 @@ int posix_spawn(
 			processes.erase(itr);
 			return -1;
 		}
-		// printf("spawn: argv: %p\n", child.argv.data);
 	}
 
 	if (envp)
 	{
-		// child.envp.name = std::format("{},{}", child.pid, "envp");
-		// child.envp = CStrArray(envp, "tmp:" + std::format("{},{}", child.pid, "envp"));
 		child.envp = CStrArray(envp);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.envp.data)
@@ -245,7 +259,6 @@ int posix_spawn(
 			processes.erase(itr);
 			return -1;
 		}
-		// printf("spawn: envp: %p\n", child.envp.data);
 	}
 
 	child.fdtable[0] = 0;
@@ -276,8 +289,6 @@ int posix_spawn(
 pid_t waitpid(pid_t pid, int *stat_loc, int options)
 {
 	const auto &parent = get_current_process();
-	const auto parent_pid = parent.pid;
-	const auto parent_pgid = parent.pgid;
 
 	int supported_options = WNOHANG;
 #ifdef WUNTRACED
@@ -293,16 +304,16 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		return -1;
 	}
 
-	const bool nohang = (options & WNOHANG) != 0;
+	const bool nohang = (options & WNOHANG);
 
 	for (;;)
 	{
 		bool has_matching_child = false;
 
-		for (auto &p : processes)
+		for (auto &child : processes)
 		{
 			// p must be a child of parent
-			if (p.ppid != parent_pid)
+			if (child.ppid != parent.pid)
 				continue;
 
 			bool matches = false;
@@ -311,13 +322,13 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 				matches = true;
 			else if (pid > 0)
 				// Match a specific child
-				matches = (p.pid == pid);
+				matches = (child.pid == pid);
 			else if (pid == 0)
 				// Match any child in the same process group
-				matches = (p.pgid == parent_pgid);
+				matches = (child.pgid == parent.pgid);
 			else if (pid < 0)
 				// Match any child in a specific process group
-				matches = (p.pgid == -pid);
+				matches = (child.pgid == -pid);
 			// else: should not be possible to reach
 
 			if (!matches)
@@ -325,19 +336,30 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 
 			has_matching_child = true;
 
-			if (!p.all_threads_joined())
+			if (!child.all_threads_joined())
 				continue;
 
 			// printf("waitpid: pid %d: all %d threads joined\n", p.pid, p.threads.size());
 
-			const auto child_pid = p.pid;
+			// Have PID 0 (the libnds main thread) adopt any orphaned processes,
+			// since all it does is sit in a wait() loop. We don't want PID 0 to
+			// to leave that loop unless all child processes have exited, otherwise
+			// it will call cothread_yield_irq() forever, which still lets other
+			// threads (and therefore processes) run.
+			for (auto &orphan : processes)
+			{
+				if (orphan.ppid != child.pid)
+					continue;
+				orphan.ppid = 0;
+			}
 
 			if (stat_loc)
-				*stat_loc = p.status;
+				*stat_loc = child.status;
 
-			// Consume the child's wait status (reap).
+			const auto child_pid = child.pid;
+
 			// puts("waitpid: before processes.remove(p)");
-			processes.remove(p);
+			processes.remove(child);
 			// puts("waitpid: after processes.remove(p)");
 
 			return child_pid;
@@ -354,6 +376,16 @@ pid_t waitpid(pid_t pid, int *stat_loc, int options)
 			return 0;
 
 		cothread_yield();
+
+		/* Save this for when you wrap the cothread_(yield|send)_signal functions.
+		// Sleep until the specific target child (pid > 0) or any child (pid <= 0) owned by
+		// this parent signals exit (aka sends the same signal in process_start_trampoline).
+		if (pid > 0)
+			cothread_yield_signal(pid);
+		else
+			// Set bit 30 because we need to distinguish this waitpid(<=0) call from a waitpid(>0) call.
+			cothread_yield_signal(BIT(30) | parent.pid);
+		*/
 	}
 }
 

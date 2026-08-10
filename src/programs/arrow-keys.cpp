@@ -20,7 +20,7 @@ int main()
 
 		if (bytes_read != 3)
 		{
-			if (bytes_read == 1 && buf[0] == 'q')
+			if (buf[0] == 'q')
 				return EXIT_SUCCESS;
 			printf("read() returned %d\n", bytes_read);
 			continue;

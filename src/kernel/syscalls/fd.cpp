@@ -1,6 +1,6 @@
+#include "pipe_ops.hpp"
 #include <process_manager.hpp>
 
-#include <array>
 #include <cerrno>
 #include <cstdarg>
 #include <cstring>
@@ -12,63 +12,6 @@
 
 extern "C"
 {
-// Pipe implementation
-static constexpr int PIPE_BUF_SIZE = 512; // per-user request
-static constexpr int MAX_PIPES = 32;
-static constexpr int PIPE_KFD_BASE = -1000; // kernel fd encoding base
-
-struct Pipe
-{
-	std::array<char, PIPE_BUF_SIZE> buf;
-	size_t head{0};
-	size_t tail{0};
-	size_t count{0};
-	int readers{0};
-	int writers{0};
-	uid_t uid{0};
-	gid_t gid{0};
-};
-
-static std::array<Pipe, MAX_PIPES> pipes;
-static std::array<bool, MAX_PIPES> pipe_in_use{};
-
-static int allocate_pipe()
-{
-	for (int i = 0; i < MAX_PIPES; ++i)
-	{
-		if (!pipe_in_use[i])
-		{
-			pipe_in_use[i] = true;
-			pipes[i] = Pipe{};
-			return i;
-		}
-	}
-	return -1;
-}
-
-static void free_pipe(int idx)
-{
-	if (idx >= 0 && idx < MAX_PIPES)
-		pipe_in_use[idx] = false;
-}
-
-static int kfd_for(int pipe_idx, int end)
-{
-	// end: 0 = read, 1 = write
-	return PIPE_KFD_BASE - (pipe_idx * 2 + end);
-}
-
-static bool is_pipe_kfd(int kfd)
-{
-	return kfd <= PIPE_KFD_BASE && kfd > PIPE_KFD_BASE - MAX_PIPES * 2 - 10;
-}
-
-static int pipe_index_from_kfd(int kfd)
-{
-	const int v = PIPE_KFD_BASE - kfd;
-	return v / 2;
-}
-
 int open(const char *path, int flags, ...)
 {
 	auto &p = get_current_process();
@@ -123,35 +66,15 @@ int close(int fd)
 		return 0;
 	}
 
-	// pipe kernel fds
-	if (is_pipe_kfd(kernel_fd))
-	{
-		const int idx = pipe_index_from_kfd(kernel_fd);
-		const int end = (PIPE_KFD_BASE - kernel_fd) % 2; // 0 read, 1 write
-		if (idx >= 0 && idx < MAX_PIPES && pipe_in_use[idx])
-		{
-			if (end == 0)
-				--pipes[idx].readers;
-			else
-				--pipes[idx].writers;
+	// mark slot as open, we are definitely closing the kernel fd
+	p.fdtable[fd] = -1;
+	printf("p.fdtable[%d] = %d\n", fd, p.fdtable[fd]);
 
-			// if both ends closed, free
-			if (pipes[idx].readers <= 0 && pipes[idx].writers <= 0)
-				free_pipe(idx);
-		}
-
-		p.fdtable[fd] = -1;
-		return 0;
-	}
+	if (_pipe::is_kfd(kernel_fd))
+		return _pipe::close(kernel_fd);
 
 	typeof(close) libnds_close;
-	if (libnds_close(kernel_fd) == -1)
-		return -1;
-
-	// mark slot as open
-	p.fdtable[fd] = -1;
-
-	return 0;
+	return libnds_close(kernel_fd);
 }
 
 ssize_t read(int fd, void *ptr, size_t len)
@@ -172,60 +95,8 @@ ssize_t read(int fd, void *ptr, size_t len)
 	}
 
 	// pipe read
-	if (is_pipe_kfd(kernel_fd))
-	{
-		const int idx = pipe_index_from_kfd(kernel_fd);
-		const int end = (PIPE_KFD_BASE - kernel_fd) % 2; // 0 read, 1 write
-		if (idx < 0 || idx >= MAX_PIPES || !pipe_in_use[idx])
-		{
-			errno = EBADF;
-			return -1;
-		}
-
-		if (end != 0)
-		{
-			errno = EBADF;
-			return -1;
-		}
-
-		auto &pipe = pipes[idx];
-		// Non-blocking?
-		const bool nonblock = (p.fdstatus[fd] & O_NONBLOCK) != 0;
-
-		size_t toread = len;
-		size_t got = 0;
-		while (toread > 0)
-		{
-			if (pipe.count == 0)
-			{
-				if (pipe.writers == 0)
-				{
-					// EOF
-					break;
-				}
-				if (nonblock)
-				{
-					if (got == 0)
-					{
-						errno = EAGAIN;
-						return -1;
-					}
-					break;
-				}
-				// wait for writer to produce data
-				cothread_yield();
-				continue;
-			}
-
-			// read one byte at a time (small buffers)
-			((char *)ptr)[got++] = pipe.buf[pipe.head];
-			pipe.head = (pipe.head + 1) % PIPE_BUF_SIZE;
-			--pipe.count;
-			--toread;
-		}
-
-		return got;
-	}
+	if (_pipe::is_kfd(kernel_fd))
+		return _pipe::read(kernel_fd, ptr, len, p.fdstatus[fd] & O_NONBLOCK);
 
 	typeof(read) libnds_read;
 	return libnds_read(kernel_fd, ptr, len);
@@ -256,60 +127,10 @@ ssize_t write(int fd, const void *ptr, size_t len)
 		return fn((char *)ptr, len);
 	}
 
+	if (_pipe::is_kfd(kernel_fd))
+		return _pipe::write(kernel_fd, ptr, len, p.fdstatus[fd] & O_NONBLOCK);
+
 	typeof(write) libnds_write;
-	// pipe write
-	if (is_pipe_kfd(kernel_fd))
-	{
-		const int idx = pipe_index_from_kfd(kernel_fd);
-		const int end = (PIPE_KFD_BASE - kernel_fd) % 2; // 0 read, 1 write
-		if (idx < 0 || idx >= MAX_PIPES || !pipe_in_use[idx])
-		{
-			errno = EBADF;
-			return -1;
-		}
-		if (end != 1)
-		{
-			errno = EBADF;
-			return -1;
-		}
-
-		auto &pipe = pipes[idx];
-		const bool nonblock = (p.fdstatus[fd] & O_NONBLOCK) != 0;
-
-		size_t towrite = len;
-		size_t written = 0;
-		while (towrite > 0)
-		{
-			if (pipe.count >= PIPE_BUF_SIZE)
-			{
-				if (pipe.readers == 0)
-				{
-					errno = EPIPE;
-					return -1;
-				}
-				if (nonblock)
-				{
-					if (written == 0)
-					{
-						errno = EAGAIN;
-						return -1;
-					}
-					break;
-				}
-				// wait for reader to consume
-				cothread_yield();
-				continue;
-			}
-
-			pipe.buf[pipe.tail] = ((const char *)ptr)[written++];
-			pipe.tail = (pipe.tail + 1) % PIPE_BUF_SIZE;
-			++pipe.count;
-			--towrite;
-		}
-
-		return written;
-	}
-
 	return libnds_write(kernel_fd, ptr, len);
 }
 
@@ -442,56 +263,5 @@ int fcntl(int fildes, int cmd, ...)
 
 	errno = EINVAL;
 	return -1;
-}
-
-int pipe(int fildes[2])
-{
-	if (!fildes)
-	{
-		errno = EFAULT;
-		return -1;
-	}
-
-	auto &p = get_current_process();
-
-	// find two free user fds
-	int r = 0;
-	for (; r < Process::MAX_FDS && p.fdtable[r] >= 0; ++r)
-		;
-	int w = r + 1;
-	for (; w < Process::MAX_FDS && p.fdtable[w] >= 0; ++w)
-		;
-
-	if (r >= Process::MAX_FDS || w >= Process::MAX_FDS)
-	{
-		errno = EMFILE;
-		return -1;
-	}
-
-	const int idx = allocate_pipe();
-	if (idx < 0)
-	{
-		errno = ENFILE;
-		return -1;
-	}
-
-	pipes[idx].readers = 1;
-	pipes[idx].writers = 1;
-	pipes[idx].uid = 0;
-	pipes[idx].gid = 0;
-
-	const int kfd_r = kfd_for(idx, 0);
-	const int kfd_w = kfd_for(idx, 1);
-
-	p.fdtable[r] = kfd_r;
-	p.fdtable[w] = kfd_w;
-	p.fdflags[r] = 0;
-	p.fdflags[w] = 0;
-	p.fdstatus[r] = 0;
-	p.fdstatus[w] = 0;
-
-	fildes[0] = r;
-	fildes[1] = w;
-	return 0;
 }
 }

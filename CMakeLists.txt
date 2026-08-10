@@ -32,6 +32,7 @@ set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--e
 
 set(SYMBOLS
 	gettimeofday fputs getpid getppid setenv unsetenv libnds_close keyboardSetCanonicalMode
+	feof ferror popen
 
 	# dash symbols
 	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
@@ -81,6 +82,7 @@ create_ndsx_program_from_sources(argv-test src/programs/argv-test.cpp)
 create_ndsx_program_from_sources(jailbreak-test src/programs/jailbreak-test.cpp)
 create_ndsx_program_from_sources(arrow-keys src/programs/arrow-keys.cpp)
 create_ndsx_program_from_sources(canonical-mode-test src/programs/canonical-mode-test.cpp)
+create_ndsx_program_from_sources(vfork-pipe-test src/programs/vfork-pipe-test.cpp)
 
 add_library(dash STATIC IMPORTED GLOBAL)
 set_target_properties(dash PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/src/libdash.a")

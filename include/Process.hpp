@@ -54,6 +54,9 @@ struct Process
 	bool all_threads_joined();
 	void cleanup();
 	void check_alarm();
+
+	// Returns Process::MAX_FDS if all slots are taken.
+	int find_first_open_fd_slot();
 };
 
 constexpr bool operator==(const Process &a, const Process &b)
