@@ -6,36 +6,41 @@
 
 extern "C" typeof(close) libnds_close;
 
-void Process::cleanup()
+Process::~Process()
 {
-	printf("Process::cleanup: pid: %d\n", pid);
-	for (const auto kernelfd : fdtable)
+	printf("~Process: pid=%d\n", pid);
+
+	for (const auto kfd : fdtable)
 	{
-		if (kernelfd <= STDERR_FILENO)
+		if (kfd <= STDERR_FILENO)
 			// ignore standard streams and open slots
 			continue;
-		if (kernelfd_in_use(kernelfd))
+
+		if (kernelfd_in_use(kfd))
 			// kernelfd is in use by another process!
 			continue;
-		if (_pipe::is_kfd(kernelfd))
+
+		if (_pipe::is_kfd(kfd))
 		{
-			// TODO: maybe make _exit() cleanup the vfork()'d child that calls it?
-			printf("Process::cleanup: pipe kfd: %x\n", kernelfd);
-			_pipe::close(kernelfd);
+			printf("unclosed pipe kfd: %x\n", kfd);
+
+			if (_pipe::close(kfd) == -1)
+				perror("_pipe::close");
+
 			continue;
 		}
-		printf("Process::cleanup: closing %x\n", kernelfd);
-		if (libnds_close(kernelfd) == -1)
+
+		printf("unclosed libnds kfd: %x\n", kfd);
+
+		if (libnds_close(kfd) == -1)
 			perror("libnds_close");
 	}
-	for (const auto t : threads)
-	{
-		// The only possible errors are:
-		// - EPERM:  Deleting the current thread
-		// - EINVAL: Thread not in list
-		// Neither are fatal problems, so we can ignore.
-		cothread_delete(t);
-	}
+
+	// The only possible errors of cothread_delete() are:
+	// - EPERM:  Deleting the current thread
+	// - EINVAL: Thread not in list
+	// Neither are fatal problems, so we can ignore them.
+	std::ranges::for_each(threads, cothread_delete);
 }
 
 bool Process::all_threads_joined()

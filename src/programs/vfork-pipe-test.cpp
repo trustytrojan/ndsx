@@ -1,10 +1,10 @@
-#include <cerrno>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <sys/unistd.h>
 
-#define CHILD_MSG "hello from child\n"
+#include <cstdio>
+#include <cstdlib>
+
+// String literals include a null-terminator, so CHILD_MSG_SIZE will include it.
+#define CHILD_MSG "hello from child"
 #define CHILD_MSG_SIZE sizeof(CHILD_MSG)
 
 int main()
@@ -15,73 +15,55 @@ int main()
 
 	if (pipe((int *)&p) == -1)
 	{
-		perror("pipe");
+		perror("parent: pipe");
 		return EXIT_FAILURE;
 	}
 
-	const volatile auto pid = vfork();
-	printf("%d: vfork returned %d\n", getpid(), pid);
+	printf("parent: p={r=%d w=%d}\n", p.r, p.w);
 
-	switch (pid)
+	switch (vfork())
 	{
 	case -1:
 		perror("vfork");
 		return EXIT_FAILURE;
-	case 0: // child
-		// puts("child case");
+	case 0:
 		// we share all memory, even this thread, with the parent.
 		// do what we need to do and exit.
-		if (write(p.w, CHILD_MSG, CHILD_MSG_SIZE) == -1)
+		if (close(p.r) == -1)
+			perror("child: close(p.r)");
+
+		const auto bytes_written = write(p.w, CHILD_MSG, CHILD_MSG_SIZE);
+		if (bytes_written == -1)
 		{
-			// puts("child: write returned -1, error will be printed, calling _exit(1)");
-			// perror("child: write");
-			// _exit(1);
-			break;
+			perror("child: write");
+			if (close(p.w) == -1)
+				perror("child: close(p.w)");
+			puts("child: _exit(1)");
+			_exit(1);
 		}
-		else
-		{
-			// puts("child: write was successful, calling _exit(0)");
-			// _exit(0);
-			break;
-		}
-	default:
-		puts("parent case");
-		break;
-	}
+		printf("child: wrote %d bytes to pipe: '%s'\n", bytes_written, CHILD_MSG);
 
-	printf("vfork returned %d\n", pid);
-	printf("getpid: %d\n", getpid());
+		if (close(p.w) == -1)
+			perror("child: close(p.w)");
 
-	printf("p.r: %d\n", p.r);
-	printf("p.w: %d\n", p.w);
-
-	if (pid == 0)
-	{
-		puts("pid is 0, exiting");
+		puts("child: _exit(0)");
 		_exit(0);
 	}
 
 	// the child has exited at this point, so we can safely return from main().
-	char buf[CHILD_MSG_SIZE];
-	if (read(p.r, buf, CHILD_MSG_SIZE) == -1)
+	char buf[CHILD_MSG_SIZE]{};
+	const auto bytes_read = read(p.r, buf, CHILD_MSG_SIZE);
+	if (bytes_read == -1)
 	{
 		perror("parent: read");
 		return EXIT_FAILURE;
 	}
-	buf[CHILD_MSG_SIZE - 1] = '\0';
 
-	printf("child says: '%s'\n", buf);
+	printf("parent: read %d bytes from pipe: '%s'\n", bytes_read, buf);
 
 	if (close(p.r) == -1)
-	{
 		perror("close");
-		return EXIT_FAILURE;
-	}
-	printf("closed p.r=%d\n", p.r);
+
 	if (close(p.w) == -1)
-	{
 		perror("close");
-		return EXIT_FAILURE;
-	}
-	printf("closed p.w=%d\n", p.w);
 }

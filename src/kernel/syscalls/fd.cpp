@@ -16,30 +16,27 @@ int open(const char *path, int flags, ...)
 {
 	auto &p = get_current_process();
 
-	// find first open slot
-	int i = 0;
-	for (; i < Process::MAX_FDS && p.fdtable[i] >= 0; ++i)
-		;
+	const auto fd = p.find_first_open_fd_slot();
 
-	if (i >= Process::MAX_FDS)
+	if (fd >= Process::MAX_FDS)
 	{
 		errno = ENFILE;
 		return -1;
 	}
 
 	typeof(open) libnds_open;
-	const auto kernel_fd = libnds_open(path, flags);
+	const auto kfd = libnds_open(path, flags);
 
-	if (kernel_fd == -1)
+	if (kfd == -1)
 		return -1;
 
-	// map USER fd `i` to KERNEL fd `kernel_fd`
-	p.fdtable[i] = kernel_fd;
+	// map USER fd to KERNEL fd
+	p.fdtable[fd] = kfd;
 	// initialize user-visible fd flags (clear FD_CLOEXEC)
-	p.fdflags[i] = 0;
+	p.fdflags[fd] = 0;
 
 	// we return the USER fd, not the KERNEL fd which should be private to us
-	return i;
+	return fd;
 }
 
 int close(int fd)
