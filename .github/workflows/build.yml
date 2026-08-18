@@ -37,6 +37,13 @@ jobs:
           ./configure.sh
           make -j
           cp src/libdash.a .
+      
+      - name: Build busybox
+        run: |
+          cd ..
+          git clone https://github.com/trustytrojan/busybox --depth 1
+          cd busybox
+          ./build.sh
 
       - name: Install CMake
         run: |
