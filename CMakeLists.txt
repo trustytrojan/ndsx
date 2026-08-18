@@ -45,6 +45,7 @@ file(GLOB_RECURSE NDSX_SOURCES src/kernel/*.cpp)
 add_executable(ndsx ${NDSX_SOURCES})
 target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed dswifi9)
+target_compile_options(ndsx PRIVATE -Wno-psabi)
 foreach(SYMBOL IN LISTS SYMBOLS)
 	# Force this symbol to be included in the binary
 	target_link_options(ndsx PRIVATE "-Wl,--undefined=${SYMBOL}")
