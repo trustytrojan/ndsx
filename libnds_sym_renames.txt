@@ -2,16 +2,18 @@
 getpid libnds_getpid
 wait libnds_wait
 waitpid libnds_waitpid
+_exit libnds__exit
+execve libnds_execve
 # file descriptors
 open libnds_open
 close libnds_close
 read libnds_read
 write libnds_write
 lseek libnds_lseek
+fcntl libnds_fcntl
 # these renames force the linker to pull in picolibc's stdio streams instead, giving us nice buffered I/O
 stdin libnds_stdin
 stdout libnds_stdout
 stderr libnds_stderr
 # cothreading API
-cothread_create libnds_cothread_create
 cothread_yield libnds_cothread_yield

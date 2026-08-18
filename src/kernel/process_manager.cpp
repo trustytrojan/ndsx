@@ -1,63 +1,35 @@
+#include "process_manager.hpp"
+#include "CStrArray.hpp"
+
 #include <nds/cothread.h>
-#include <process_manager.hpp>
 
 #include <dlfcn.h>
-#include <pthread.h>
+#include <errno.h>
+#include <signal.h>
 #include <spawn.h>
+#include <sys/wait.h>
 
-#include <cerrno>
+#include <algorithm>
+#include <csetjmp>
 #include <list>
 
-constexpr Process::~Process()
-{
-	if (dlhandle && dlclose(dlhandle) < 0)
-		printf("kernel: dlclose: %s\n", dlerror());
-	for (const auto fd : fdtable)
-	{
-		// We don't want to close libnds's standard streams! Close everything else, though.
-		if (fd > STDERR_FILENO && close(fd) == -1)
-			perror("kernel: close");
-	}
-	for (const auto t : threads)
-	{
-		// printf("kernel: deleting thread %d", t);
-
-		// The only possible errors are:
-		// - EPERM:  Deleting the current thread
-		// - EINVAL: Thread not in list
-		// Neither are fatal problems, so we can ignore.
-		cothread_delete(t);
-	}
-}
-
-constexpr bool Process::all_threads_joined()
-{
-	for (const auto thread : threads)
-	{
-		if (thread <= 0)
-			continue;
-
-		errno = 0;
-		if (cothread_has_joined(thread))
-			continue;
-
-		// Detached threads are removed by libnds as soon as they finish.
-		if (errno == EINVAL)
-			continue;
-
-		return false;
-	}
-	return true;
-}
-
 static std::list<Process> processes{};
-static Process &kernel_process = processes.emplace_back();
-static int global_pid_counter = 0;
+static Process &kernel_process{processes.emplace_back()};
+static int global_pid_counter{};
+
+bool kernelfd_in_use(int kfd)
+{
+	return std::ranges::any_of(
+		processes, [=](const auto &p) { return std::ranges::any_of(p.fdtable, [=](auto fd) { return fd == kfd; }); });
+}
 
 void set_kernel_process()
 {
 	kernel_process.pid = 0;
 	kernel_process.ppid = -1;
+	kernel_process.pgid = 0;
+	sigemptyset(&kernel_process.signal_mask);
+	sigemptyset(&kernel_process.pending_signals);
 	kernel_process.threads.emplace_back(cothread_get_current());
 	kernel_process.fdtable[0] = 0;
 	kernel_process.fdtable[1] = 1;
@@ -69,7 +41,7 @@ Process &get_current_process()
 	const auto process = get_process_by_thread(cothread_get_current());
 	if (process)
 		return *process;
-	puts("kernel: current process not found! crashing");
+	puts("get_current_process: current process not found! crashing");
 	libndsCrash("current process not found");
 }
 
@@ -78,13 +50,13 @@ Process *get_process_by_thread(cothread_t thread)
 	for (auto &p : processes)
 		if (const auto itr{std::ranges::find(p.threads, thread)}; itr != p.threads.end())
 			return &p;
-	printf("kernel: no process for thread %d\n", thread);
+	printf("get_process_by_thread: no process for thread %d\n", thread);
 	return {};
 }
 
 auto get_process_itr(pid_t pid)
 {
-	return std::ranges::find_if(processes, [=](auto &p) { return p.pid == pid; });
+	return std::ranges::find_if(processes, [=](const auto &p) { return p.pid == pid; });
 }
 
 Process *get_process(pid_t pid)
@@ -93,24 +65,114 @@ Process *get_process(pid_t pid)
 	return (itr == processes.end()) ? nullptr : &*itr;
 }
 
-static int process_start_trampoline(void *arg)
+int process_start_trampoline(void *arg)
 {
+	extern char **environ;
 	auto &p = *(Process *)arg;
-	p.exit_code = p.entrypoint(p.argv.count(), p.argv.data, p.envp.data);
+	// printf("process_start_trampoline: p=%d t=%d\n", get_current_process().pid, cothread_get_current());
+
+	// FIX: Claim the environment immediately upon thread entry!
+	// We must overwrite whatever the previous thread left in the global variable
+	// before any yielding or heap allocations can occur.
+	environ = p.envp.data;
+
+	const auto status = setjmp(p.exit_env);
+	if (status == 0)
+	{
+		p.exit_code = p.entrypoint(p.argv.count(), p.argv.data, p.envp.data);
+		// puts("process_start_trampoline: returned from main()");
+	}
+	else
+	{
+		// puts("process_start_trampoline: _exit() called");
+		p.exit_code = status;
+	}
 
 	// No mechanism for anything other than normal process exits exist, so that's all we will store.
 	p.status = (p.exit_code << 8) | 0x00;
 
 	// Save `environ` before we implicitly yield and die, so our destructor can properly free it
-	// if we reallocated it via setenv(). See the end of cothread_yield() for more info.
-	extern char **environ;
+	// if it was realloc'd via setenv(). See the end of cothread_yield() for more info.
 	p.envp.data = environ;
 
-	// printf("thread %d exiting\n", cothread_get_current());
+	// printf(
+	// 	"process_start_trampoline: p=%d t=%d ec=%d\n", get_current_process().pid, cothread_get_current(), p.exit_code);
 	return p.exit_code;
 }
 
-extern "C" int posix_spawn(
+void transfer_current_thread(Process &from, Process &to)
+{
+	const auto current_thread = cothread_get_current();
+	const auto it = std::ranges::find(from.threads, current_thread);
+	if (it != from.threads.end())
+		from.threads.erase(it);
+	to.threads.emplace_back(current_thread);
+
+	assert(get_current_process() == to);
+
+	extern char **environ;
+	from.envp.data = environ;
+	environ = to.envp.data;
+}
+
+// Syscalls that need to modify process state are below; others are in src/kernel/syscalls/process.cpp.
+extern "C"
+{
+pid_t vfork()
+{
+	// setjmp returns 0 initially. When we longjmp back later, it will return the child PID.
+	pid_t ret = setjmp(get_current_process().vfork_env);
+
+	auto &parent = get_current_process();
+
+	// printf("vfork: setjmp: %d\n", ret);
+
+	if (ret == 0)
+	{
+		// **Make a copy** of the Process struct entirely.
+		// This also increments the reference counter of dlhandle,
+		// so if the child execve()s it needs to swap dlhandle with the new image
+		// so that this one's reference count is decremented.
+		auto &child = processes.emplace_back(parent);
+
+		// Child-specific changes
+		child.pid = ++global_pid_counter;
+		child.ppid = parent.pid;
+		sigemptyset(&child.pending_signals);
+		child.threads.clear();
+
+		{
+			nds_critical_section cs;
+			transfer_current_thread(parent, child);
+			parent.is_vfork_suspended = true;
+		}
+
+		sassert(get_current_process() == child, "%d == %d", get_current_process().pid, child.pid);
+
+		// puts("vfork: returning 0");
+
+		// return 0 to the new child process
+		return 0;
+	}
+	else
+	{
+		// _exit() or execve() jumped here, and it has already called transfer_current_thread().
+		sassert(get_current_process() == parent, "%d == %d", get_current_process().pid, parent.pid);
+
+		// We just need to mark the parent as no longer suspended by vfork().
+		{
+			nds_critical_section cs;
+			parent.is_vfork_suspended = false;
+		}
+
+		// printf("vfork: returning %d\n", ret);
+
+		// return the child PID to the parent
+		return ret;
+	}
+}
+
+int posix_spawn(
 	pid_t *pid,
 	const char *path,
 	const posix_spawn_file_actions_t *file_actions,
@@ -122,10 +184,11 @@ extern "C" int posix_spawn(
 	(void)file_actions;
 	(void)attrp;
 
+	// TODO: replace with DSL caching system from nds-shell
 	const auto handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
 	if (!handle)
 	{
-		printf("kernel: dlopen: %s\n", dlerror());
+		printf("dlopen: %s\n", dlerror());
 		errno = ENOEXEC;
 		return -1;
 	}
@@ -141,84 +204,78 @@ extern "C" int posix_spawn(
 
 	// Create the process object first, then create the thread with a stable address.
 	auto &child = processes.emplace_back();
-	child.dlhandle = handle;
+	child.dlhandle = {
+		handle,
+		[](auto ptr)
+		{
+			if (ptr && dlclose(ptr) < 0)
+				printf("dlclose: %s\n", dlerror());
+		}};
 	child.pid = ++global_pid_counter;
 	child.ppid = parent.pid;
+	child.pgid = parent.pgid;
 	child.entrypoint = entrypoint;
+
+	const auto itr = get_process_itr(child.pid);
 
 	if (argv)
 	{
+		// child.argv.name = std::format("{},{}", child.pid, "argv");
+		// child.argv = CStrArray(argv, "tmp:" + std::format("{},{}", child.pid, "argv"));
 		child.argv = CStrArray(argv);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.argv.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
-			processes.erase(get_process_itr(child.pid));
+			processes.erase(itr);
 			return -1;
 		}
+		// printf("spawn: argv: %p\n", child.argv.data);
 	}
 
 	if (envp)
 	{
+		// child.envp.name = std::format("{},{}", child.pid, "envp");
+		// child.envp = CStrArray(envp, "tmp:" + std::format("{},{}", child.pid, "envp"));
 		child.envp = CStrArray(envp);
 		// The constructor does a deep-copy, so if it's still empty, memory failed to allocate.
 		if (!child.envp.data)
 		{
 			errno = ENOMEM;
-			dlclose(handle);
-			processes.erase(get_process_itr(child.pid));
+			processes.erase(itr);
 			return -1;
 		}
+		// printf("spawn: envp: %p\n", child.envp.data);
 	}
 
 	child.fdtable[0] = 0;
 	child.fdtable[1] = 1;
 	child.fdtable[2] = 2;
+	sigemptyset(&child.signal_mask);
+	sigemptyset(&child.pending_signals);
 
-	// Attempt to create the process's first thread
-	const auto thread = cothread_create(process_start_trampoline, &child, 0, COTHREAD_DETACHED);
+	// Create the child's first thread.
+	// You definitely want a larger stack for complex programs, like a POSIX-compliant shell.
+	const auto thread = cothread_create(process_start_trampoline, &child, 4096, COTHREAD_DETACHED);
 	if (thread < 0)
 	{
 		// errno is set by cothread_create
-		dlclose(handle);
-		processes.erase(get_process_itr(child.pid));
+		processes.erase(itr);
 		return -1;
 	}
-	child.threads.emplace_back(thread);
-
-	// Our `cothread_create` override always adds the new thread to the *current process*!
-	// Remove it as it actually belongs to the child process.
-	parent.threads.pop_back();
+	child.threads.assign({thread});
 
 	if (pid)
 		*pid = child.pid;
 
-	// printf("spawn: pid=%d thread=%d\n", *pid, thread);
 	return 0;
 }
 
-static bool waitpid_pid_matches(const Process &p, pid_t parent_pid, pid_t pid)
+pid_t waitpid(pid_t pid, int *stat_loc, int options)
 {
-	if (p.ppid != parent_pid)
-		return false;
-
-	if (pid == -1)
-		return true;
-
-	if (pid > 0)
-		return p.pid == pid;
-
-	// Process groups are not modeled yet; approximate pid==0 as "any child in caller group".
-	if (pid == 0)
-		return true;
-
-	return false;
-}
-
-extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
-{
-	const auto parent_pid = getpid();
+	const auto &parent = get_current_process();
+	const auto parent_pid = parent.pid;
+	const auto parent_pgid = parent.pgid;
 
 	int supported_options = WNOHANG;
 #ifdef WUNTRACED
@@ -234,24 +291,34 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 		return -1;
 	}
 
-	if (pid < -1)
-	{
-		// We do not track process groups yet.
-		puts("waitpid: pid < -1");
-		errno = ECHILD;
-		return -1;
-	}
-
 	const bool nohang = (options & WNOHANG) != 0;
 
 	for (;;)
 	{
 		bool has_matching_child = false;
 
-		for (auto it = processes.begin(); it != processes.end(); ++it)
+		for (auto &p : processes)
 		{
-			auto &p = *it;
-			if (!waitpid_pid_matches(p, parent_pid, pid))
+			// p must be a child of parent
+			if (p.ppid != parent_pid)
+				continue;
+
+			bool matches = false;
+			if (pid == -1)
+				// Match any child
+				matches = true;
+			else if (pid > 0)
+				// Match a specific child
+				matches = (p.pid == pid);
+			else if (pid == 0)
+				// Match any child in the same process group
+				matches = (p.pgid == parent_pgid);
+			else if (pid < 0)
+				// Match any child in a specific process group
+				matches = (p.pgid == -pid);
+			// else: should not be possible to reach
+
+			if (!matches)
 				continue;
 
 			has_matching_child = true;
@@ -259,29 +326,72 @@ extern "C" pid_t waitpid(pid_t pid, int *stat_loc, int options)
 			if (!p.all_threads_joined())
 				continue;
 
+			// printf("waitpid: pid %d: all %d threads joined\n", p.pid, p.threads.size());
+
 			const auto child_pid = p.pid;
 
 			if (stat_loc)
 				*stat_loc = p.status;
 
 			// Consume the child's wait status (reap).
-			// printf("waitpid: reaping %d\n", child_pid);
-			it = processes.erase(it);
-			// printf("waitpid: reaped %d\n", child_pid);
+			// puts("waitpid: before processes.remove(p)");
+			processes.remove(p);
+			// puts("waitpid: after processes.remove(p)");
+
 			return child_pid;
 		}
 
 		if (!has_matching_child)
 		{
-			puts("waitpid: !has_matching_child");
-			errno = ECHILD;
+			// puts("waitpid: !has_matching_child");
+			errno = ECHILD; // No children
 			return -1;
 		}
 
 		if (nohang)
 			return 0;
 
-		// printf("waitpid: %d yielding\n", parent_pid);
 		cothread_yield();
 	}
+}
+
+int killpg(pid_t pgid, int sig)
+{
+	if (!is_valid_signal_number(sig))
+	{
+		errno = EINVAL;
+		return -1;
+	}
+
+	auto &current = get_current_process();
+	if (pgid == 0)
+		pgid = current.pgid;
+
+	if (pgid <= 0)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	bool found = false;
+	for (auto &process : processes)
+	{
+		if (process.pgid != pgid)
+			continue;
+
+		found = true;
+		queue_signal(process, sig);
+	}
+
+	if (!found)
+	{
+		errno = ESRCH;
+		return -1;
+	}
+
+	// Allow synchronous self-delivery semantics for the calling thread.
+	deliver_pending_signals(current);
+
+	return 0;
+}
 }

@@ -4,17 +4,6 @@
 
 extern "C"
 {
-cothread_t cothread_create(cothread_entrypoint_t entrypoint, void *arg, size_t stack_size, unsigned int flags)
-{
-	typeof(cothread_create) libnds_cothread_create;
-	const auto thread = libnds_cothread_create(entrypoint, arg, stack_size, flags);
-	if (thread < 0)
-		// errno is set
-		return -1;
-	get_current_process().threads.emplace_back(thread);
-	return thread;
-}
-
 void cothread_yield(void)
 {
 	// Before yielding, let's swap out libc's `environ` value with the next process's `envp`.
@@ -54,5 +43,8 @@ void cothread_yield(void)
 	// which doesn't call our wrapper and therefore leaves `environ` pointing to its own environment!
 	// We MUST restore `environ` to our environment to prevent claiming ownership of a dead thread's environment.
 	environ = get_current_process().envp.data;
+
+	// Deliver any unblocked pending signals before returning to userspace.
+	deliver_pending_signals(get_current_process());
 }
 }

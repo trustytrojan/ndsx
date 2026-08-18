@@ -3,11 +3,22 @@
 	"configurePresets": [
 		{
 			"name": "blocksds",
-			"displayName": "BlocksDS",
 			"binaryDir": "${sourceDir}/build",
 			"toolchainFile": "$env{BLOCKSDS}/cmake/BlocksDS.cmake",
+			"hidden": true
+		},
+		{
+			"name": "blocksds-release",
+			"inherits": "blocksds",
 			"cacheVariables": {
 				"CMAKE_BUILD_TYPE": "Release"
+			}
+		},
+		{
+			"name": "blocksds-debug",
+			"inherits": "blocksds",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
 			}
 		}
 	]

@@ -17,16 +17,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build & install libnds fork
+        run: |
+          git clone https://codeberg.org/trustytrojan/libnds --branch canonical-mode --depth 1
+          cd libnds
+          git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
+          make install -j INSTALLDIR=$WONDERFUL_TOOLCHAIN/thirdparty/blocksds/core/libs/libnds
+
+      - name: Install Autotools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends autoconf automake libtool
+
+      - name: Build nds-dash
+        run: |
+          cd ..
+          git clone https://github.com/trustytrojan/nds-dash --depth 1
+          cd nds-dash
+          ./configure.sh
+          make -j
+          cp src/libdash.a .
+
       - name: Install CMake
         run: |
           which cmake && exit 0
-          set -e
           apt-get update
           apt-get install -y --no-install-recommends cmake
           which cmake
 
       - name: Configure CMake
-        run: cmake --preset blocksds
+        run: cmake --preset blocksds-release
 
       - name: Build project
         run: cmake --build build -j

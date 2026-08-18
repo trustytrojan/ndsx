@@ -3,64 +3,82 @@ project(ndsx LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_compile_definitions(MSPACES=1)
 
-# prefix the libnds syscall symbols
-# TODO: make this a custom command/target so that it depends on libnds_sym_renames.txt
+# Setup build target to create modified libnds with renamed symbols
 set(OBJCOPY_COMMAND "$ENV{WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-objcopy")
-execute_process(
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+	set(LIBNDS9_FILENAME "libnds9d.a")
+else()
+	set(LIBNDS9_FILENAME "libnds9.a")
+endif()
+add_custom_command(
+	OUTPUT "${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
 	COMMAND "${OBJCOPY_COMMAND}"
 		"--redefine-syms=${CMAKE_SOURCE_DIR}/libnds_sym_renames.txt"
-		"$ENV{BLOCKSDS}/libs/libnds/lib/libnds9.a"
+		"$ENV{BLOCKSDS}/libs/libnds/lib/${LIBNDS9_FILENAME}"
 		"${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
-	COMMAND_ERROR_IS_FATAL ANY
+	DEPENDS
+		"${CMAKE_SOURCE_DIR}/libnds_sym_renames.txt"
+		"$ENV{BLOCKSDS}/libs/libnds/lib/${LIBNDS9_FILENAME}"
 )
+add_custom_target(nds9-prefixed-build DEPENDS "${CMAKE_BINARY_DIR}/libnds9-prefixed.a")
 add_library(nds9-prefixed STATIC IMPORTED)
-set_target_properties(nds9-prefixed PROPERTIES
-	IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/libnds9-prefixed.a"
-)
+add_dependencies(nds9-prefixed nds9-prefixed-build)
+set_target_properties(nds9-prefixed PROPERTIES IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/libnds9-prefixed.a")
+
 # remove `-Wl,-lnds9` so we can link to our modified libnds instead
 set(CMAKE_CXX_STANDARD_LIBRARIES "-Wl,--start-group -Wl,-lstdc++ -Wl,-lc -Wl,--end-group")
 
-add_executable(ndsx
-	src/kernel/main.cpp
-	src/kernel/process_manager.cpp
-	src/kernel/syscalls/fd.cpp
-	src/kernel/syscalls/process.cpp
-	src/kernel/syscalls/cothread.cpp
-	src/kernel/std_streams.c
+set(SYMBOLS
+	gettimeofday fputs getpid getppid setenv unsetenv libnds_close keyboardSetCanonicalMode
+
+	# dash symbols
+	__aeabi_d2iz __aeabi_ddiv __aeabi_dmul _ctype_b atoi bsearch closedir dup dup2 execve fcntl fork fstat getcwd getegid geteuid getgid getgroups getpgrp getuid isatty iswblank iswctype kill killpg lstat mbrlen mbrtowc mbsrtowcs mempcpy memrchr opendir pipe putenv qsort readdir realloc setlocale setpgid sigaction signal sigprocmask sigsuspend stat stpncpy strcasecmp strchrnul strcoll strcspn strpbrk strsignal strspn strtod strtoimax strtok strtoumax sysconf tcgetattr tcgetpgrp tcsetpgrp times umask vfork vsnprintf wcschr wctype
 )
+
+file(GLOB_RECURSE NDSX_SOURCES src/kernel/*.cpp)
+add_executable(ndsx ${NDSX_SOURCES})
 target_include_directories(ndsx PRIVATE include)
 target_link_libraries(ndsx PRIVATE nds9-prefixed)
-target_link_options(ndsx PRIVATE
-	-Wl,--undefined=fwrite
-	-Wl,--undefined=fputs
-	-Wl,--undefined=getppid
-	-Wl,--undefined=wait
-	-Wl,--undefined=gettimeofday
-	-Wl,--undefined=getenv
-	-Wl,--undefined=setenv
-	-Wl,--undefined=unsetenv
-)
+foreach(SYMBOL IN LISTS SYMBOLS)
+	# Force this symbol to be included in the binary
+	target_link_options(ndsx PRIVATE -Wl,--undefined=${SYMBOL})
+endforeach()
 nds_create_rom(ndsx)
 
-function(create_ndsx_program PROGRAM SOURCES)
-	add_library(${PROGRAM} STATIC ${SOURCES})
-	blocksds_create_dsl(${PROGRAM} MAIN_TARGET ndsx)
+function(create_ndsx_program_from_library TARGET)
+	blocksds_create_dsl(
+		${TARGET}
+		MAIN_TARGET ndsx
+		${ARGN}
+	)
 	if(NOT "$ENV{CI}")
 		make_directory("${CMAKE_SOURCE_DIR}/sdcard")
 		add_custom_command(
-			OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
+			OUTPUT "${CMAKE_SOURCE_DIR}/sdcard/${TARGET}.dsl"
 			COMMAND ${CMAKE_COMMAND} -E create_symlink
-				"${${PROGRAM}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
-				"${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl"
-			MAIN_DEPENDENCY "${${PROGRAM}_DSL}"
+				"${${TARGET}_DSL}" # blocksds_create_dsl() returns ABSOLUTE paths to the generated DSLs!
+				"${CMAKE_SOURCE_DIR}/sdcard/${TARGET}.dsl"
+			MAIN_DEPENDENCY "${${TARGET}_DSL}"
 		)
-		add_custom_target(link_${PROGRAM}_into_sdcard ALL DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/${PROGRAM}.dsl")
+		add_custom_target(link_${TARGET}_into_sdcard ALL DEPENDS "${CMAKE_SOURCE_DIR}/sdcard/${TARGET}.dsl")
 	endif()
 endfunction()
 
-create_ndsx_program(init_process src/programs/init.cpp)
-create_ndsx_program(my_prog src/programs/my_prog.cpp)
-create_ndsx_program(env-test src/programs/env-test.cpp)
-create_ndsx_program(argv-test src/programs/argv-test.cpp)
-create_ndsx_program(jailbreak-test src/programs/jailbreak-test.cpp)
+function(create_ndsx_program_from_sources TARGET SOURCES)
+	add_library(${TARGET} STATIC ${SOURCES})
+	create_ndsx_program_from_library(${TARGET} ${ARGN})
+endfunction()
+
+create_ndsx_program_from_sources(init_process src/programs/init.cpp)
+create_ndsx_program_from_sources(my_prog src/programs/my_prog.cpp)
+create_ndsx_program_from_sources(env-test src/programs/env-test.cpp)
+create_ndsx_program_from_sources(argv-test src/programs/argv-test.cpp)
+create_ndsx_program_from_sources(jailbreak-test src/programs/jailbreak-test.cpp)
+create_ndsx_program_from_sources(arrow-keys src/programs/arrow-keys.cpp)
+create_ndsx_program_from_sources(canonical-mode-test src/programs/canonical-mode-test.cpp)
+
+add_library(dash STATIC IMPORTED GLOBAL)
+set_target_properties(dash PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/src/libdash.a")
+create_ndsx_program_from_library(dash IGNORE_UNRESOLVED_SYMBOLS)

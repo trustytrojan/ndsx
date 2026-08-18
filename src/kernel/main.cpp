@@ -13,10 +13,13 @@
 
 int start_init()
 {
+	char *argv[] = {(char *)"dash.dsl", nullptr};
+	char *envp[] = {(char *)"", nullptr};
+
 	pid_t pid;
-	if (posix_spawn(&pid, "init_process.dsl", {}, {}, {}, {}) == -1)
+	if (posix_spawn(&pid, "dash.dsl", {}, {}, argv, envp) == -1)
 	{
-		puts("failed to spawn init! crashing");
+		perror("posix_spawn");
 		return -67;
 	}
 
@@ -27,8 +30,6 @@ int start_init()
 		perror("waitpid");
 		return -67;
 	}
-
-	// printf("kernel: after init waitpid()\n");
 
 	if (rc != pid)
 	{
@@ -62,15 +63,68 @@ void init_console()
 	static PrintConsole console;
 	consoleInit(&console, layer, type, size, mapBase, tileBase, true, true);
 
-	keyboardDemoInit()->scrollSpeed = 0;
+	const auto kb = keyboardDemoInit();
+	kb->scrollSpeed = 0;
+
+	// Echo all keypresses as if tcsetattr() was called with termios.c_lflags & ECHO
+	kb->OnKeyPressed = [](const auto kc)
+	{
+		const auto consolePrintStr = [](const std::string_view s)
+		{
+			for (const auto c : s)
+			{
+				if (!c)
+					break;
+				consolePrintChar(c);
+			}
+		};
+
+		switch (kc)
+		{
+			// clang-format off
+		case DVK_FOLD:  consolePrintStr("^["); break;
+		case DVK_UP:    consolePrintStr("^[[A"); break;
+		case DVK_DOWN:  consolePrintStr("^[[B"); break;
+		case DVK_RIGHT: consolePrintStr("^[[C"); break;
+		case DVK_LEFT:  consolePrintStr("^[[D"); break;
+		default: if (kc > 0) consolePrintChar(kc); break;
+			// clang-format on
+		}
+	};
+
+	// Emulate ANSI escape sequences for arrow/Esc keys
+	kb->OnKeyPutc = [](const int kc)
+	{
+		const auto keyboardFifoPuts = [](const std::string_view s)
+		{
+			for (const auto c : s)
+			{
+				if (!c)
+					break;
+				keyboardFifoPutc(c);
+			}
+		};
+
+		switch (kc)
+		{
+			// clang-format off
+		case DVK_FOLD:  keyboardFifoPutc('\e'); break;
+		case DVK_UP:    keyboardFifoPuts("\e[A"); break;
+		case DVK_DOWN:  keyboardFifoPuts("\e[B"); break;
+		case DVK_RIGHT: keyboardFifoPuts("\e[C"); break;
+		case DVK_LEFT:  keyboardFifoPuts("\e[D"); break;
+			// clang-format on
+		}
+
+		// Tell libnds to continue its normal behavior of keyboardFifoUpdate().
+		// That way, we don't have to manually handle backspace or other keys.
+		return true;
+	};
+
 	keyboardShow();
 }
 
-// The presence of this macro is a good way to check if we're building against this branch:
-// https://codeberg.org/trustytrojan/libnds/src/branch/dsl-symbol-resolver-callback
-// Rejecting symbol usage isn't a requirement, but lets us prevent processes from
-// calling libnds functions that we override.
-#ifdef DSL_SYMBOL_UNRESOLVED
+// Prevent processes from calling libnds functions that we override.
 bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
 {
 	// Prevent DSLs from accessing our renamed libnds functions!
@@ -80,22 +134,21 @@ bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32
 		return false;
 	}
 
-	if (!(attributes & DSL_SYMBOL_UNRESOLVED))
+	if (!(attributes & DSL_SYMBOL_UNRESOLVED) || !*name)
 		return true;
+
+	fprintf(stderr, "kernel: failed to resolve symbol: '%s'\n", name);
 
 	// We aren't doing any symbol resolution yet.
 	return false;
 }
-#endif
 
 int main()
 {
 	defaultExceptionHandler();
 	init_console();
 	set_kernel_process();
-#ifdef DSL_SYMBOL_UNRESOLVED
 	dsl_set_symbol_resolver(my_sym_resolver);
-#endif
 
 	printf("ndsx 0.0.1\n\n");
 

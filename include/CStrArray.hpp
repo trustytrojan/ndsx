@@ -3,17 +3,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+// #include <string>
 #include <utility>
 
 struct CStrArray
 {
 	char **data{};
+	// std::string name;
 
 	constexpr CStrArray() = default;
 
 	// Deep copy from an existing null-terminated array
 	// If any allocation fails, `data` will be NULL.
-	constexpr explicit CStrArray(char *const *src)
+	constexpr explicit CStrArray(char *const *src /*, const std::string &name*/)
+	// : name{name}
 	{
 		if (!src)
 			return;
@@ -21,7 +24,7 @@ struct CStrArray
 		size_t count{};
 		while (src[count])
 			++count;
-		// printf("kernel: CStrArray: count: %d\n", count);
+		// printf("CStrArray(%p): count: %d\n", this, count);
 
 		if (!count)
 			return;
@@ -30,12 +33,12 @@ struct CStrArray
 		if (!data)
 			return;
 
-		// printf("kernel: CStrArray: calloc'd data: %p\n", data);
+		// printf("[c] t=%p\n", this);
 
 		for (size_t i = 0; i < count; ++i)
 			if (src[i] && !(data[i] = strdup(src[i])))
 			{
-				fputs("kernel: CStrArray: strdup failed\n", stderr);
+				puts("CStrArray: strdup failed");
 				// Memory error! Free everything.
 				for (size_t j = 0; j < i; ++j)
 					free(data[j]);
@@ -44,7 +47,7 @@ struct CStrArray
 				count = 0;
 				return;
 			}
-		// printf("kernel: CStrArray: returning: data=%p count=%d\n", data, count);
+		// printf("C(%s): t=%p d=%p\n", name.c_str(), this, data);
 	}
 
 	// Count how many strings are in the array.
@@ -63,7 +66,7 @@ struct CStrArray
 	{
 		if (!data)
 			return;
-		// printf("CStrArray: data: %p\n", data);
+		// printf("c(%s): t=%p d=%p\n", name.c_str(), this, data);
 		for (auto s{data}; *s; ++s)
 		{
 			// printf("CStrArray: freeing %p '%s'\n", *s, *s);
@@ -81,6 +84,7 @@ struct CStrArray
 	{
 		clear();
 		data = std::exchange(other.data, nullptr);
+		// printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
 	}
 
 	// Move assignment
@@ -90,11 +94,15 @@ struct CStrArray
 		{
 			clear();
 			data = std::exchange(other.data, nullptr);
+			// printf("m(%s): t=%p o=%p d=%p\n", name.c_str(), this, &other, data);
 		}
 		return *this;
 	}
 
-	// Explicitly forbid copying to prevent accidental double-frees
-	constexpr CStrArray(const CStrArray &) = delete;
+	constexpr CStrArray(const CStrArray &other)
+		: CStrArray(other.data /*, other.name*/)
+	{
+	}
+
 	constexpr CStrArray &operator=(const CStrArray &) = delete;
 };

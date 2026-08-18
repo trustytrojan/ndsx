@@ -1,47 +1,35 @@
 #pragma once
 
 #include <nds.h>
-#include <vector>
 
-#include "CStrArray.hpp"
-
-struct Process
-{
-	using MainFn = int (*)(int argc, char *argv[], char *envp[]);
-
-	static constexpr auto MAX_FDS{8};
-
-	void *dlhandle;
-	int pid;
-	int ppid;
-	int fdtable[MAX_FDS];
-	std::vector<cothread_t> threads;
-	CStrArray argv, envp;
-	MainFn entrypoint;
-	int exit_code;
-	int status;
-
-	constexpr Process()
-		: dlhandle(nullptr),
-		  pid(0),
-		  ppid(-1),
-		  fdtable{-1, -1, -1, -1, -1, -1, -1, -1},
-		  entrypoint(nullptr),
-		  exit_code(0),
-		  status(0)
-	{
-	}
-
-	constexpr ~Process();
-	constexpr bool all_threads_joined();
-};
-
-constexpr bool operator==(const Process &a, const Process &b)
-{
-	return a.pid == b.pid;
-}
+#include "Process.hpp"
 
 Process &get_current_process();
 Process *get_process(pid_t pid);
 Process *get_process_by_thread(cothread_t thread);
+bool deliver_pending_signals(Process &process, bool *caught_signal = nullptr);
 void set_kernel_process();
+
+struct nds_critical_section
+{
+	const int oldIME = enterCriticalSection();
+	constexpr ~nds_critical_section() { leaveCriticalSection(oldIME); }
+};
+
+void transfer_current_thread(Process &from, Process &to);
+bool kernelfd_in_use(int kfd);
+
+static constexpr bool is_valid_signal_number(const int sig)
+{
+	return sig > 0 && sig < NSIG;
+}
+
+static void queue_signal(Process &process, const int sig)
+{
+	sigaddset(&process.pending_signals, sig);
+}
+
+static constexpr pid_t normalize_process_group_id(pid_t pid, pid_t pgid)
+{
+	return (pgid == 0) ? pid : pgid;
+}
