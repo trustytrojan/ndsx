@@ -11,39 +11,44 @@
 
 #include "process_manager.hpp"
 
-int start_init()
+void start_init()
 {
-	char *argv[] = {(char *)"dash.dsl", nullptr};
-	char *envp[] = {(char *)"", nullptr};
+	char *argv[] = {(char *)"busybox.dsl", (char *)"hush", {}};
+	char *envp[] = {(char *)"", {}};
 
 	pid_t pid;
-	if (posix_spawn(&pid, "dash.dsl", {}, {}, argv, envp) == -1)
+	if (posix_spawn(&pid, "busybox.dsl", {}, {}, argv, envp) == -1)
 	{
-		perror("posix_spawn");
-		return -67;
+		printf("%s: posix_spawn: %s\n", __func__, strerror(errno));
+		return;
 	}
 
-	int status;
-	const auto rc = waitpid(pid, &status, 0);
-	if (rc == -1)
-	{
-		perror("waitpid");
-		return -67;
-	}
+	printf("%s: spawned child %d, now waiting for all children to exit\n", __func__, pid);
 
-	if (rc != pid)
+	while (true)
 	{
-		printf("start_init: waitpid returned wrong child: %d\n", rc);
-		return -67;
-	}
+		int status;
+		const auto pid = wait(&status);
 
-	if (!WIFEXITED(status))
-	{
-		puts("start_init: init process did not exit normally");
-		return -67;
-	}
+		if (pid == -1)
+		{
+			if (errno == ECHILD)
+			{
+				printf("%s: ECHILD received, returning\n", __func__);
+				return;
+			}
 
-	return WEXITSTATUS(status);
+			printf("%s: wait: %s\n", __func__, strerror(errno));
+			continue;
+		}
+
+		printf("%s: wait returned %d\n", __func__, pid);
+
+		if (WIFEXITED(status))
+			printf("%s: exit code: %d\n", __func__, WEXITSTATUS(status));
+		else
+			printf("%s: child did not exit normally\n", __func__);
+	}
 }
 
 void init_console()
@@ -127,19 +132,19 @@ void init_console()
 // Prevent processes from calling libnds functions that we override.
 bool my_sym_resolver(const char *const name, uint32_t *const value, const uint32_t attributes)
 {
-	// Prevent DSLs from accessing our renamed libnds functions!
-	if ((attributes & DSL_SYMBOL_MAIN_BINARY) && strstr(name, "libnds_") == name) // equivalent of `starts_with()`
+	// Prevent DSLs from accessing our renamed libnds functions and cothread functions
+	const auto is_restricted_function = !strncmp(name, "libnds_", 7) || !strncmp(name, "cothread_", 9);
+	if ((attributes & DSL_SYMBOL_MAIN_BINARY) && is_restricted_function)
 	{
-		fprintf(stderr, "kernel: blocked access to symbol '%s'\n", name);
+		printf("kernel: blocked access to symbol '%s'\n", name);
 		return false;
 	}
 
-	if (!(attributes & DSL_SYMBOL_UNRESOLVED) || !*name)
+	// Not unresolved, we can return true.
+	if (!(attributes & DSL_SYMBOL_UNRESOLVED))
 		return true;
 
-	fprintf(stderr, "kernel: failed to resolve symbol: '%s'\n", name);
-
-	// We aren't doing any symbol resolution yet.
+	printf("kernel: failed to resolve symbol '%s'", name);
 	return false;
 }
 
@@ -158,11 +163,8 @@ int main()
 		goto end;
 	}
 
-	{
-		int rc = start_init();
-		printf("init exited with %d\n", rc);
-		puts("now looping");
-	}
+	start_init();
+	puts("start_init returned, now looping");
 
 end:
 	while (true)

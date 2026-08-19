@@ -12,8 +12,8 @@ write libnds_write
 lseek libnds_lseek
 fcntl libnds_fcntl
 # these renames force the linker to pull in picolibc's stdio streams instead, giving us nice buffered I/O
-stdin libnds_stdin
-stdout libnds_stdout
-stderr libnds_stderr
+#stdin libnds_stdin
+#stdout libnds_stdout
+#stderr libnds_stderr
 # cothreading API
 cothread_yield libnds_cothread_yield
