@@ -21,7 +21,7 @@ jobs:
         id: clone-libnds-fork
         run: |
           git clone https://codeberg.org/trustytrojan/libnds --branch canonical-mode --depth 1
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=$(cd libnds; git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cache libnds fork
         id: cache-libnds-fork
@@ -41,7 +41,7 @@ jobs:
         id: clone-busybox
         run: |
           git clone https://github.com/trustytrojan/busybox ../busybox --depth 1
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=$(cd ../busybox; git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       
       - name: Cache Busybox
         id: cache-busybox
