@@ -85,9 +85,9 @@ create_ndsx_program_from_sources(arrow-keys src/programs/arrow-keys.cpp)
 create_ndsx_program_from_sources(canonical-mode-test src/programs/canonical-mode-test.cpp)
 create_ndsx_program_from_sources(vfork-pipe-test src/programs/vfork-pipe-test.cpp)
 
-add_library(dash STATIC IMPORTED GLOBAL)
-set_target_properties(dash PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/src/libdash.a")
-create_ndsx_program_from_library(dash)
+# add_library(dash STATIC IMPORTED GLOBAL)
+# set_target_properties(dash PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../nds-dash/src/libdash.a")
+# create_ndsx_program_from_library(dash)
 
 add_library(busybox STATIC IMPORTED GLOBAL)
 set_target_properties(busybox PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../busybox/libbusybox.a")

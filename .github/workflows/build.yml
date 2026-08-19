@@ -17,41 +17,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build & install libnds fork
+      - name: Clone libnds fork
+        id: clone-libnds-fork
         run: |
           git clone https://codeberg.org/trustytrojan/libnds --branch canonical-mode --depth 1
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache libnds fork
+        id: cache-libnds-fork
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.BLOCKSDS }}/libs/libnds/lib/libnds*.a
+          key: libnds-${{ steps.clone-libnds-fork.outputs.commit_hash }}
+
+      - name: Build & install libnds fork
+        if: steps.cache-libnds-fork.outputs.cache-hit != 'true'
+        run: |
           cd libnds
           git clone https://codeberg.org/blocksds/wf-fatfs --depth 1 fatfs
-          make install -j INSTALLDIR=$WONDERFUL_TOOLCHAIN/thirdparty/blocksds/core/libs/libnds
+          make install -j INSTALLDIR=$BLOCKSDS/libs/libnds
 
-      - name: Install Autotools
+      - name: Clone Busybox
+        id: clone-busybox
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends autoconf automake libtool
-
-      - name: Build nds-dash
-        run: |
-          cd ..
-          git clone https://github.com/trustytrojan/nds-dash --depth 1
-          cd nds-dash
-          ./configure.sh
-          make -j
-          cp src/libdash.a .
+          git clone https://github.com/trustytrojan/busybox ../busybox --depth 1
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       
-      - name: Build busybox
-        shell: bash
-        run: |
-          cd ..
-          git clone https://github.com/trustytrojan/busybox --depth 1
-          cd busybox
-          ./build.sh
+      - name: Cache Busybox
+        id: cache-busybox
+        uses: actions/cache@v5
+        with:
+          path: ../busybox/libbusybox.a
+          key: busybox-${{ steps.clone-busybox.outputs.commit_hash }}
+
+      - name: Install necessary packages to build Busybox
+        if: steps.cache-busybox.outputs.cache-hit != 'true'
+        run: apt update && apt install -y --no-install-recommends build-essential file
+
+      - name: Build Busybox
+        if: steps.cache-busybox.outputs.cache-hit != 'true'
+        run: cd ../busybox && bash build.sh
 
       - name: Install CMake
-        run: |
-          which cmake && exit 0
-          apt-get update
-          apt-get install -y --no-install-recommends cmake
-          which cmake
+        run: apt update && apt install -y --no-install-recommends cmake
 
       - name: Configure CMake
         run: cmake --preset blocksds-release
