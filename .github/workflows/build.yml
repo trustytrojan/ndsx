@@ -54,6 +54,11 @@ jobs:
         if: steps.cache-busybox.outputs.cache-hit != 'true'
         run: apt update && apt install -y --no-install-recommends build-essential file
 
+      # Might want to comment them out instead so that they can be restored after Busybox is built
+      - name: Delete `itoa` and `utoa` declarations in `stdlib.h`
+        if: steps.cache-busybox.outputs.cache-hit != 'true'
+        run: sed -i -E '/^char \*[iu]toa\(.+__picolibc_export;$/d' /opt/wonderful/toolchain/gcc-arm-none-eabi/arm-none-eabi/include/stdlib.h
+
       - name: Build Busybox
         if: steps.cache-busybox.outputs.cache-hit != 'true'
         run: cd ../busybox && bash build.sh
