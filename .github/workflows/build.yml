@@ -30,6 +30,7 @@ jobs:
           apt-get install -y --no-install-recommends autoconf automake libtool
 
       - name: Build nds-dash
+        shell: bash
         run: |
           cd ..
           git clone https://github.com/trustytrojan/nds-dash --depth 1
